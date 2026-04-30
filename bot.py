@@ -41,18 +41,22 @@ TEXTS = {
         'choose_lang': "🌐 Выберите язык / Choose language:",
         'welcome': "🔮 *Добро пожаловать в пространство Мистры*\n\nЯ — ваш проводник в мире Таро и Нумерологии. Здесь нет случайностей — лишь знаки, которые ждут своей интерпретации.\n\nЧто вас привело сегодня?",
         'main_menu_title': "🔮 *Главное меню*\n\nВыберите, что вас интересует:",
-        'btn_tarot': "🎴 Расклад Таро", 'btn_love': "❤️ Любовь и отношения",
+        'btn_tarot': "🎴 Таро", 'btn_love': "❤️ Любовь",
         'btn_numerology': "🔢 Нумерология", 'btn_horoscope': "📅 Гороскоп",
-        'btn_moon': "🌙 Лунный календарь", 'btn_lucky': "🔑 Число удачи",
+        'btn_moon': "🌙 Луна", 'btn_lucky': "🔑 Число удачи",
         'btn_ritual': "🌿 Ритуал дня", 'btn_week': "🃏 Карта недели",
         'btn_card_day': "🌟 Карта дня", 'btn_question': "❓ Задать вопрос",
         'btn_runes': "🪨 Руны", 'btn_dream': "💭 Толкование сна",
         'btn_palmistry': "🖐 Хиромантия",
         'btn_subscription': "💎 Подписка", 'btn_promo': "🎟 Промокод",
-        'btn_notifications': "🔔 Рассылка", 'btn_referral': "👥 Реферальная программа",
-        'btn_profile': "👤 Мой профиль", 'btn_support': "🆘 Тех. поддержка",
+        'btn_notifications': "🔔 Рассылка", 'btn_referral': "👥 Реферал",
+        'btn_profile': "👤 Мой профиль", 'btn_support': "🆘 Поддержка",
         'btn_back': "◀️ Назад", 'btn_main_menu': "🏠 Главное меню",
         'btn_cancel': "✖️ Отмена", 'btn_language': "🌐 Язык / Language",
+        'sep_quick': "⚡️ Быстрые расклады",
+        'sep_readings': "🔮 Гадания",
+        'sep_esoterics': "✨ Нумерология & Эзотерика",
+        'sep_account': "👤 Аккаунт",
         'tarot_menu_title': "🎴 *Расклады Таро*\n\nВыберите вид расклада:",
         'btn_tarot1': "🃏 1 карта — быстрый ответ",
         'btn_tarot3': "🎴 3 карты — Прошлое/Настоящее/Будущее",
@@ -136,18 +140,22 @@ TEXTS = {
         'choose_lang': "🌐 Выберите язык / Choose language:",
         'welcome': "🔮 *Welcome to Mystra's realm*\n\nI am your guide in the world of Tarot and Numerology. There are no coincidences here — only signs waiting to be interpreted.\n\nWhat brings you here today?",
         'main_menu_title': "🔮 *Main Menu*\n\nChoose what interests you:",
-        'btn_tarot': "🎴 Tarot Spread", 'btn_love': "❤️ Love & Relationships",
+        'btn_tarot': "🎴 Tarot", 'btn_love': "❤️ Love",
         'btn_numerology': "🔢 Numerology", 'btn_horoscope': "📅 Horoscope",
-        'btn_moon': "🌙 Moon Calendar", 'btn_lucky': "🔑 Lucky Number",
+        'btn_moon': "🌙 Moon", 'btn_lucky': "🔑 Lucky Number",
         'btn_ritual': "🌿 Daily Ritual", 'btn_week': "🃏 Week Cards",
         'btn_card_day': "🌟 Card of the Day", 'btn_question': "❓ Ask a Question",
-        'btn_runes': "🪨 Runes", 'btn_dream': "💭 Dream Interpretation",
+        'btn_runes': "🪨 Runes", 'btn_dream': "💭 Dream Interp.",
         'btn_palmistry': "🖐 Palmistry",
         'btn_subscription': "💎 Subscription", 'btn_promo': "🎟 Promo Code",
-        'btn_notifications': "🔔 Daily Broadcast", 'btn_referral': "👥 Referral Program",
-        'btn_profile': "👤 My Profile", 'btn_support': "🆘 Tech Support",
+        'btn_notifications': "🔔 Broadcast", 'btn_referral': "👥 Referral",
+        'btn_profile': "👤 My Profile", 'btn_support': "🆘 Support",
         'btn_back': "◀️ Back", 'btn_main_menu': "🏠 Main Menu",
         'btn_cancel': "✖️ Cancel", 'btn_language': "🌐 Язык / Language",
+        'sep_quick': "⚡️ Quick Spreads",
+        'sep_readings': "🔮 Readings",
+        'sep_esoterics': "✨ Numerology & Esoterics",
+        'sep_account': "👤 Account",
         'tarot_menu_title': "🎴 *Tarot Spreads*\n\nChoose your spread:",
         'btn_tarot1': "🃏 1 card — quick answer",
         'btn_tarot3': "🎴 3 cards — Past/Present/Future",
@@ -545,34 +553,36 @@ def language_keyboard():
 
 def main_menu(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
-    # Quick — no input needed
-    for text, cb in [
-        (t(lang,'btn_card_day'),"card_of_day"),(t(lang,'btn_week'),"week_spread"),
-    ]:
-        kb.button(text=text, callback_data=cb)
-    # Readings — with input / photo
-    for text, cb in [
-        (t(lang,'btn_tarot'),"tarot_menu"),(t(lang,'btn_love'),"love_menu"),
-        (t(lang,'btn_runes'),"rune_menu"),(t(lang,'btn_dream'),"dream_interp"),
-    ]:
-        kb.button(text=text, callback_data=cb)
+    # ── Section: Quick spreads ──────────────────────────────────────────────────
+    kb.button(text=t(lang,'sep_quick'), callback_data="noop")
+    kb.button(text=t(lang,'btn_card_day'), callback_data="card_of_day")
+    kb.button(text=t(lang,'btn_week'), callback_data="week_spread")
+    # ── Section: Readings ───────────────────────────────────────────────────────
+    kb.button(text=t(lang,'sep_readings'), callback_data="noop")
+    kb.button(text=t(lang,'btn_tarot'), callback_data="tarot_menu")
+    kb.button(text=t(lang,'btn_love'), callback_data="love_menu")
+    kb.button(text=t(lang,'btn_runes'), callback_data="rune_menu")
+    kb.button(text=t(lang,'btn_dream'), callback_data="dream_interp")
     kb.button(text=t(lang,'btn_palmistry'), callback_data="palmistry")
-    # Esoterics
-    for text, cb in [
-        (t(lang,'btn_numerology'),"numerology_menu"),(t(lang,'btn_horoscope'),"horoscope"),
-        (t(lang,'btn_moon'),"moon_calendar"),(t(lang,'btn_lucky'),"lucky_number"),
-        (t(lang,'btn_ritual'),"ritual_day"),(t(lang,'btn_question'),"free_question"),
-    ]:
-        kb.button(text=text, callback_data=cb)
-    # Account & settings
-    for text, cb in [
-        (t(lang,'btn_subscription'),"subscription"),(t(lang,'btn_promo'),"promo_input"),
-        (t(lang,'btn_notifications'),"notifications"),(t(lang,'btn_referral'),"referral"),
-        (t(lang,'btn_profile'),"profile"),(t(lang,'btn_support'),"support"),
-    ]:
-        kb.button(text=text, callback_data=cb)
+    # ── Section: Numerology & Esoterics ────────────────────────────────────────
+    kb.button(text=t(lang,'sep_esoterics'), callback_data="noop")
+    kb.button(text=t(lang,'btn_numerology'), callback_data="numerology_menu")
+    kb.button(text=t(lang,'btn_horoscope'), callback_data="horoscope")
+    kb.button(text=t(lang,'btn_moon'), callback_data="moon_calendar")
+    kb.button(text=t(lang,'btn_lucky'), callback_data="lucky_number")
+    kb.button(text=t(lang,'btn_ritual'), callback_data="ritual_day")
+    kb.button(text=t(lang,'btn_question'), callback_data="free_question")
+    # ── Section: Account ────────────────────────────────────────────────────────
+    kb.button(text=t(lang,'sep_account'), callback_data="noop")
+    kb.button(text=t(lang,'btn_subscription'), callback_data="subscription")
+    kb.button(text=t(lang,'btn_promo'), callback_data="promo_input")
+    kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
+    kb.button(text=t(lang,'btn_referral'), callback_data="referral")
+    kb.button(text=t(lang,'btn_profile'), callback_data="profile")
+    kb.button(text=t(lang,'btn_support'), callback_data="support")
     kb.button(text=t(lang,'btn_language'), callback_data="change_language")
-    kb.adjust(2, 2,2,1, 2,2,2, 2,2,2,1)
+    #          sep  2    sep  2  2  1    sep  2  2  2    sep  2  2  2  1
+    kb.adjust(1, 2, 1, 2,2,1, 1, 2,2,2, 1, 2,2,2, 1)
     return kb.as_markup()
 
 def back_button(lang: str = 'ru'):
@@ -961,6 +971,10 @@ async def cancel_input_cb(callback: CallbackQuery):
     user_states.pop(callback.from_user.id, None)
     lang = await get_user_lang(callback.from_user.id)
     await callback.message.edit_text(t(lang,'main_menu_title'), parse_mode="Markdown", reply_markup=main_menu(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data == "noop")
+async def noop_cb(callback: CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(F.data == "tarot_menu")
