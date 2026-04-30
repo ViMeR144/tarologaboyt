@@ -53,10 +53,12 @@ TEXTS = {
         'btn_profile': "👤 Мой профиль", 'btn_support': "🆘 Поддержка",
         'btn_back': "◀️ Назад", 'btn_main_menu': "🏠 Главное меню",
         'btn_cancel': "✖️ Отмена", 'btn_language': "🌐 Язык / Language",
-        'sep_quick': "⚡️ Быстрые расклады",
-        'sep_readings': "🔮 Гадания",
-        'sep_esoterics': "✨ Нумерология & Эзотерика",
-        'sep_account': "👤 Аккаунт",
+        'btn_readings_menu': "🔮 Гадания",
+        'btn_esoterics_menu': "✨ Нумерология & Эзотерика",
+        'btn_account_menu': "👤 Аккаунт",
+        'readings_menu_title': "🔮 *Гадания*\n\nВыберите вид гадания:",
+        'esoterics_menu_title': "✨ *Нумерология & Эзотерика*\n\nВыберите раздел:",
+        'account_menu_title': "👤 *Аккаунт*\n\nВыберите раздел:",
         'tarot_menu_title': "🎴 *Расклады Таро*\n\nВыберите вид расклада:",
         'btn_tarot1': "🃏 1 карта — быстрый ответ",
         'btn_tarot3': "🎴 3 карты — Прошлое/Настоящее/Будущее",
@@ -152,10 +154,12 @@ TEXTS = {
         'btn_profile': "👤 My Profile", 'btn_support': "🆘 Support",
         'btn_back': "◀️ Back", 'btn_main_menu': "🏠 Main Menu",
         'btn_cancel': "✖️ Cancel", 'btn_language': "🌐 Язык / Language",
-        'sep_quick': "⚡️ Quick Spreads",
-        'sep_readings': "🔮 Readings",
-        'sep_esoterics': "✨ Numerology & Esoterics",
-        'sep_account': "👤 Account",
+        'btn_readings_menu': "🔮 Readings",
+        'btn_esoterics_menu': "✨ Numerology & Esoterics",
+        'btn_account_menu': "👤 Account",
+        'readings_menu_title': "🔮 *Readings*\n\nChoose your reading type:",
+        'esoterics_menu_title': "✨ *Numerology & Esoterics*\n\nChoose a section:",
+        'account_menu_title': "👤 *Account*\n\nChoose a section:",
         'tarot_menu_title': "🎴 *Tarot Spreads*\n\nChoose your spread:",
         'btn_tarot1': "🃏 1 card — quick answer",
         'btn_tarot3': "🎴 3 cards — Past/Present/Future",
@@ -553,36 +557,48 @@ def language_keyboard():
 
 def main_menu(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
-    # ── Section: Quick spreads ──────────────────────────────────────────────────
-    kb.button(text=t(lang,'sep_quick'), callback_data="noop")
     kb.button(text=t(lang,'btn_card_day'), callback_data="card_of_day")
     kb.button(text=t(lang,'btn_week'), callback_data="week_spread")
-    # ── Section: Readings ───────────────────────────────────────────────────────
-    kb.button(text=t(lang,'sep_readings'), callback_data="noop")
+    kb.button(text=t(lang,'btn_readings_menu'), callback_data="readings_menu")
+    kb.button(text=t(lang,'btn_esoterics_menu'), callback_data="esoterics_menu")
+    kb.button(text=t(lang,'btn_account_menu'), callback_data="account_menu")
+    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
+    kb.adjust(2, 1, 1, 1, 1)
+    return kb.as_markup()
+
+def readings_menu_kb(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_tarot'), callback_data="tarot_menu")
     kb.button(text=t(lang,'btn_love'), callback_data="love_menu")
     kb.button(text=t(lang,'btn_runes'), callback_data="rune_menu")
     kb.button(text=t(lang,'btn_dream'), callback_data="dream_interp")
     kb.button(text=t(lang,'btn_palmistry'), callback_data="palmistry")
-    # ── Section: Numerology & Esoterics ────────────────────────────────────────
-    kb.button(text=t(lang,'sep_esoterics'), callback_data="noop")
+    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.adjust(2, 2, 1, 1)
+    return kb.as_markup()
+
+def esoterics_menu_kb(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_numerology'), callback_data="numerology_menu")
     kb.button(text=t(lang,'btn_horoscope'), callback_data="horoscope")
     kb.button(text=t(lang,'btn_moon'), callback_data="moon_calendar")
     kb.button(text=t(lang,'btn_lucky'), callback_data="lucky_number")
     kb.button(text=t(lang,'btn_ritual'), callback_data="ritual_day")
     kb.button(text=t(lang,'btn_question'), callback_data="free_question")
-    # ── Section: Account ────────────────────────────────────────────────────────
-    kb.button(text=t(lang,'sep_account'), callback_data="noop")
+    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.adjust(2, 2, 2, 1)
+    return kb.as_markup()
+
+def account_menu_kb(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_subscription'), callback_data="subscription")
     kb.button(text=t(lang,'btn_promo'), callback_data="promo_input")
     kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_referral'), callback_data="referral")
     kb.button(text=t(lang,'btn_profile'), callback_data="profile")
     kb.button(text=t(lang,'btn_support'), callback_data="support")
-    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
-    #          sep  2    sep  2  2  1    sep  2  2  2    sep  2  2  2  1
-    kb.adjust(1, 2, 1, 2,2,1, 1, 2,2,2, 1, 2,2,2, 1)
+    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.adjust(2, 2, 2, 1)
     return kb.as_markup()
 
 def back_button(lang: str = 'ru'):
@@ -718,11 +734,12 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
 # ─── DAILY BROADCAST ──────────────────────────────────────────────────────────
 async def send_daily_broadcast():
     today = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y")
-    card = random.choice(TAROT_CARDS)
+    today_seed = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+    channel_card = random.choice(TAROT_CARDS)
     if CHANNEL_ID:
         try:
-            ch_answer = await ask_claude(f"Сегодня {today}. Карта дня: {card}. Дай краткую интерпретацию 80-100 слов.", 'ru')
-            await bot.send_message(CHANNEL_ID, f"🌅 *Карта дня — {today}*\n\n*{card}*\n\n{ch_answer}", parse_mode="Markdown")
+            ch_answer = await ask_claude(f"Сегодня {today}. Карта дня: {channel_card}. Дай краткую интерпретацию 80-100 слов.", 'ru')
+            await bot.send_message(CHANNEL_ID, f"🌅 *Карта дня — {today}*\n\n*{channel_card}*\n\n{ch_answer}", parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Channel broadcast error: {e}")
     user_ids = await get_notification_users()
@@ -732,6 +749,7 @@ async def send_daily_broadcast():
             lang = await get_user_lang(uid)
             has_sub = await has_subscription(uid)
             words = "150-200" if has_sub else "40-50"
+            card = random.Random(hash(f"{uid}:{today_seed}")).choice(TAROT_CARDS)
             answer = await ask_claude(f"Сегодня {today}. Карта дня: {card}. Дай интерпретацию {words} слов.", lang)
             text = f"{t(lang,'broadcast_morning',date=today)}\n\n*{card}*\n\n{answer}"
             if not has_sub:
@@ -973,8 +991,22 @@ async def cancel_input_cb(callback: CallbackQuery):
     await callback.message.edit_text(t(lang,'main_menu_title'), parse_mode="Markdown", reply_markup=main_menu(lang))
     await callback.answer()
 
-@dp.callback_query(F.data == "noop")
-async def noop_cb(callback: CallbackQuery):
+@dp.callback_query(F.data == "readings_menu")
+async def readings_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'readings_menu_title'), parse_mode="Markdown", reply_markup=readings_menu_kb(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data == "esoterics_menu")
+async def esoterics_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'esoterics_menu_title'), parse_mode="Markdown", reply_markup=esoterics_menu_kb(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data == "account_menu")
+async def account_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'account_menu_title'), parse_mode="Markdown", reply_markup=account_menu_kb(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "tarot_menu")
@@ -1169,7 +1201,8 @@ async def card_of_day_cb(callback: CallbackQuery):
         await callback.answer(); return
     await callback.message.edit_text(t(lang,'pulling_card'), parse_mode="Markdown")
     today = datetime.now().strftime("%d.%m.%Y")
-    card = random.choice(TAROT_CARDS)
+    today_seed = datetime.now().strftime("%Y-%m-%d")
+    card = random.Random(hash(f"{uid}:{today_seed}")).choice(TAROT_CARDS)
     await _do_request(uid, callback.from_user.username, "card_of_day",
                       callback.message.chat.id, callback.message.message_id,
                       f"Сегодня {today}. Карта дня: {card}. Дай глубокую интерпретацию 150–250 слов.", lang,
