@@ -59,6 +59,27 @@ TEXTS = {
         'readings_menu_title': "🔮 *Гадания*\n\nВыберите вид гадания:",
         'esoterics_menu_title': "✨ *Нумерология & Эзотерика*\n\nВыберите раздел:",
         'account_menu_title': "👤 *Аккаунт*\n\nВыберите раздел:",
+        'btn_tarot_cc': "✡️ Кельтский крест (10 карт)", 'btn_tarot_yn': "☯️ Да / Нет",
+        'btn_career': "💼 Карьера", 'btn_card_year': "🗓 Карта года",
+        'btn_my_horo': "♈ Мой гороскоп", 'btn_history': "📜 История раскладов",
+        'btn_tarot_library': "📚 Библиотека Таро", 'btn_gift_sub': "🎁 Подарить подписку",
+        'btn_career_money': "💰 Деньги и финансы", 'btn_career_job': "💼 Карьера / Работа",
+        'btn_career_biz': "🚀 Бизнес и проекты",
+        'career_menu_title': "💼 *Карьера и деньги*\n\nВыберите тему:",
+        'tarot_cc_prompt': "✡️ *Кельтский крест (10 карт)*\n\nОпишите ситуацию или задайте главный вопрос:",
+        'tarot_yn_prompt': "☯️ *Да или Нет?*\n\nСформулируйте вопрос чётко:",
+        'career_money_prompt': "💰 *Деньги и финансы*\n\nОпишите ситуацию или задайте вопрос:",
+        'career_job_prompt': "💼 *Карьера и работа*\n\nОпишите ситуацию или задайте вопрос:",
+        'career_biz_prompt': "🚀 *Бизнес и проекты*\n\nОпишите ваш бизнес или проект:",
+        'card_year_prompt': "🗓 *Карта года*\n\nВведите дату рождения *ДД.ММ.ГГГГ*:\n\n_Или укажите её в профиле — тогда карта откроется сразу._",
+        'tarot_library_prompt': "📚 *Библиотека Таро*\n\nНапишите название карты или тему:\n\n_Например: «Шут», «Башня», «Масть Кубков»_",
+        'history_title': "📜 *История раскладов*\n\n",
+        'history_empty': "📜 *История раскладов*\n\nУ вас пока нет сохранённых раскладов.\n\nСделайте первый расклад! 🔮",
+        'moon_new_msg': "🌑 *Новолуние*\n\nНастало время новых начинаний!\n\nСегодня мощная энергия для загадывания желаний и постановки целей. Отличное время для нового расклада Таро. 🌙",
+        'moon_full_msg': "🌕 *Полнолуние*\n\nВремя кульминации и завершения!\n\nСегодня обострена интуиция, эмоции на пике. Отпустите старое и подведите итоги. ✨",
+        'inactive_reminder': "🔮 *Мистра скучает по вам...*\n\nВы не заглядывали уже несколько дней. Карты ждут — возможно, сегодня именно тот день, когда знаки готовы открыться вам. 🌟",
+        'gift_sub_created': "🎁 *Подарочный промокод создан!*\n\nПередайте другу этот код:\n\n`{code}`\n\nОн даёт *30 дней* подписки на Мистру. ✨",
+        'gift_sub_btn': "🎁 Подарить подписку другу — {stars} Stars",
         'tarot_menu_title': "🎴 *Расклады Таро*\n\nВыберите вид расклада:",
         'btn_tarot1': "🃏 1 карта — быстрый ответ",
         'btn_tarot3': "🎴 3 карты — Прошлое/Настоящее/Будущее",
@@ -160,6 +181,27 @@ TEXTS = {
         'readings_menu_title': "🔮 *Readings*\n\nChoose your reading type:",
         'esoterics_menu_title': "✨ *Numerology & Esoterics*\n\nChoose a section:",
         'account_menu_title': "👤 *Account*\n\nChoose a section:",
+        'btn_tarot_cc': "✡️ Celtic Cross (10 cards)", 'btn_tarot_yn': "☯️ Yes / No",
+        'btn_career': "💼 Career", 'btn_card_year': "🗓 Card of the Year",
+        'btn_my_horo': "♈ My Horoscope", 'btn_history': "📜 Reading History",
+        'btn_tarot_library': "📚 Tarot Library", 'btn_gift_sub': "🎁 Gift Subscription",
+        'btn_career_money': "💰 Money & Finance", 'btn_career_job': "💼 Career / Work",
+        'btn_career_biz': "🚀 Business & Projects",
+        'career_menu_title': "💼 *Career & Money*\n\nChoose a topic:",
+        'tarot_cc_prompt': "✡️ *Celtic Cross (10 cards)*\n\nDescribe your situation or ask your main question:",
+        'tarot_yn_prompt': "☯️ *Yes or No?*\n\nFormulate your question clearly:",
+        'career_money_prompt': "💰 *Money & Finance*\n\nDescribe your situation or ask a question:",
+        'career_job_prompt': "💼 *Career & Work*\n\nDescribe your situation or ask a question:",
+        'career_biz_prompt': "🚀 *Business & Projects*\n\nDescribe your business or project:",
+        'card_year_prompt': "🗓 *Card of the Year*\n\nEnter your birth date *DD.MM.YYYY*:\n\n_Or set it in your profile — the card will open instantly._",
+        'tarot_library_prompt': "📚 *Tarot Library*\n\nEnter a card name or topic:\n\n_Example: «The Fool», «The Tower», «Suit of Cups»_",
+        'history_title': "📜 *Reading History*\n\n",
+        'history_empty': "📜 *Reading History*\n\nYou have no saved readings yet.\n\nMake your first spread! 🔮",
+        'moon_new_msg': "🌑 *New Moon*\n\nTime for new beginnings!\n\nPowerful energy today for setting intentions and new goals. A great time for a Tarot reading. 🌙",
+        'moon_full_msg': "🌕 *Full Moon*\n\nTime for culmination and completion!\n\nIntuition is heightened, emotions at their peak. Release the old and reflect. ✨",
+        'inactive_reminder': "🔮 *Mystra misses you...*\n\nYou haven't visited in a few days. The cards are waiting — perhaps today is the day the signs are ready to reveal themselves to you. 🌟",
+        'gift_sub_created': "🎁 *Gift promo code created!*\n\nShare this code with your friend:\n\n`{code}`\n\nIt gives *30 days* of Mystra subscription. ✨",
+        'gift_sub_btn': "🎁 Gift subscription to a friend — {stars} Stars",
         'tarot_menu_title': "🎴 *Tarot Spreads*\n\nChoose your spread:",
         'btn_tarot1': "🃏 1 card — quick answer",
         'btn_tarot3': "🎴 3 cards — Past/Present/Future",
@@ -310,6 +352,9 @@ async def init_db():
             created_at TEXT DEFAULT (datetime('now')))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS promo_uses (
             code TEXT, user_id INTEGER, PRIMARY KEY (code, user_id))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS readings_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            action TEXT, header TEXT, created_at TEXT DEFAULT (datetime('now')))""")
         for col in ["notifications INTEGER DEFAULT 1","language TEXT DEFAULT NULL",
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
                     "birth_date TEXT DEFAULT NULL","full_name TEXT DEFAULT NULL",
@@ -475,6 +520,39 @@ async def get_all_users():
         async with db.execute("SELECT user_id FROM users WHERE COALESCE(is_banned,0)=0") as c:
             return [row[0] for row in await c.fetchall()]
 
+async def save_reading_history(user_id: int, action: str, header: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO readings_history (user_id,action,header) VALUES (?,?,?)",
+                         (user_id, action, header[:120] if header else action))
+        await db.execute("""DELETE FROM readings_history WHERE user_id=? AND id NOT IN (
+            SELECT id FROM readings_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10)""",
+                         (user_id, user_id))
+        await db.commit()
+
+async def get_reading_history(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT action, header, created_at FROM readings_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10",
+                              (user_id,)) as c:
+            return await c.fetchall()
+
+async def get_inactive_users(days: int = 3):
+    cutoff = (datetime.now(MOSCOW_TZ) - timedelta(days=days)).strftime("%Y-%m-%d")
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT user_id FROM users WHERE notifications=1 AND COALESCE(is_banned,0)=0 AND last_active_date IS NOT NULL AND last_active_date < ?",
+                              (cutoff,)) as c:
+            return [row[0] for row in await c.fetchall()]
+
+def get_moon_phase(dt=None) -> str | None:
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    known_new = datetime(2000, 1, 6, 18, 14, tzinfo=timezone.utc)
+    phase = (dt - known_new).total_seconds() / 86400 % 29.53059
+    if phase < 1.5 or phase > 28.03:
+        return 'new'
+    if 13.5 < phase < 15.5:
+        return 'full'
+    return None
+
 async def apply_promo(user_id: int, code: str) -> tuple:
     code = code.upper().strip()
     async with aiosqlite.connect(DB_PATH) as db:
@@ -557,48 +635,38 @@ def language_keyboard():
 
 def main_menu(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
+    # Быстрые
     kb.button(text=t(lang,'btn_card_day'), callback_data="card_of_day")
     kb.button(text=t(lang,'btn_week'), callback_data="week_spread")
-    kb.button(text=t(lang,'btn_readings_menu'), callback_data="readings_menu")
-    kb.button(text=t(lang,'btn_esoterics_menu'), callback_data="esoterics_menu")
-    kb.button(text=t(lang,'btn_account_menu'), callback_data="account_menu")
-    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
-    kb.adjust(2, 1, 1, 1, 1)
-    return kb.as_markup()
-
-def readings_menu_kb(lang: str = 'ru'):
-    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_card_year'), callback_data="card_year")
+    kb.button(text=t(lang,'btn_my_horo'), callback_data="my_horo")
+    # Гадания
     kb.button(text=t(lang,'btn_tarot'), callback_data="tarot_menu")
     kb.button(text=t(lang,'btn_love'), callback_data="love_menu")
+    kb.button(text=t(lang,'btn_career'), callback_data="career_menu")
     kb.button(text=t(lang,'btn_runes'), callback_data="rune_menu")
     kb.button(text=t(lang,'btn_dream'), callback_data="dream_interp")
     kb.button(text=t(lang,'btn_palmistry'), callback_data="palmistry")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
-    kb.adjust(2, 2, 1, 1)
-    return kb.as_markup()
-
-def esoterics_menu_kb(lang: str = 'ru'):
-    kb = InlineKeyboardBuilder()
+    # Эзотерика
     kb.button(text=t(lang,'btn_numerology'), callback_data="numerology_menu")
     kb.button(text=t(lang,'btn_horoscope'), callback_data="horoscope")
     kb.button(text=t(lang,'btn_moon'), callback_data="moon_calendar")
     kb.button(text=t(lang,'btn_lucky'), callback_data="lucky_number")
     kb.button(text=t(lang,'btn_ritual'), callback_data="ritual_day")
     kb.button(text=t(lang,'btn_question'), callback_data="free_question")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
-    kb.adjust(2, 2, 2, 1)
-    return kb.as_markup()
-
-def account_menu_kb(lang: str = 'ru'):
-    kb = InlineKeyboardBuilder()
+    # Аккаунт
     kb.button(text=t(lang,'btn_subscription'), callback_data="subscription")
     kb.button(text=t(lang,'btn_promo'), callback_data="promo_input")
     kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_referral'), callback_data="referral")
     kb.button(text=t(lang,'btn_profile'), callback_data="profile")
     kb.button(text=t(lang,'btn_support'), callback_data="support")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
-    kb.adjust(2, 2, 2, 1)
+    kb.button(text=t(lang,'btn_history'), callback_data="history_view")
+    kb.button(text=t(lang,'btn_tarot_library'), callback_data="tarot_library")
+    kb.button(text=t(lang,'btn_gift_sub'), callback_data="gift_sub")
+    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
+    # быстрые  гадания      эзотерика  аккаунт           язык
+    kb.adjust(2,2,  2,2,2,1,  2,2,2,  2,2,2,2,1,  1)
     return kb.as_markup()
 
 def back_button(lang: str = 'ru'):
@@ -616,6 +684,8 @@ def tarot_menu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_tarot1'), callback_data="tarot_1")
     kb.button(text=t(lang,'btn_tarot3'), callback_data="tarot_3")
     kb.button(text=t(lang,'btn_tarot5'), callback_data="tarot_5")
+    kb.button(text=t(lang,'btn_tarot_cc'), callback_data="tarot_cc")
+    kb.button(text=t(lang,'btn_tarot_yn'), callback_data="tarot_yn")
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
     kb.adjust(1)
     return kb.as_markup()
@@ -670,7 +740,17 @@ def profile_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_set_birthdate'), callback_data="profile_set_birthdate")
     kb.button(text=t(lang,'btn_set_name'), callback_data="profile_set_name")
     kb.button(text=t(lang,'btn_set_zodiac'), callback_data="profile_set_zodiac")
+    kb.button(text=t(lang,'btn_history'), callback_data="history_view")
     kb.button(text=t(lang,'btn_clear_profile'), callback_data="profile_clear")
+    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.adjust(1)
+    return kb.as_markup()
+
+def career_menu_kb(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_career_money'), callback_data="career_money")
+    kb.button(text=t(lang,'btn_career_job'), callback_data="career_job")
+    kb.button(text=t(lang,'btn_career_biz'), callback_data="career_biz")
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
     kb.adjust(1)
     return kb.as_markup()
@@ -728,6 +808,7 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
     answer = await ask_claude(prompt, lang)
     result = f"{result_header}\n\n{answer}" if result_header else answer
     await _edit_or_send(chat_id, prompt_msg_id, result, back_button(lang))
+    await save_reading_history(uid, action, result_header)
     if milestone:
         await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
 
@@ -767,6 +848,41 @@ async def daily_broadcast_loop():
             target += timedelta(days=1)
         await asyncio.sleep((target - now).total_seconds())
         await send_daily_broadcast()
+
+async def moon_notification_loop():
+    while True:
+        now = datetime.now(MOSCOW_TZ)
+        target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        await asyncio.sleep((target - now).total_seconds())
+        phase = get_moon_phase()
+        if phase:
+            user_ids = await get_notification_users()
+            for uid in user_ids:
+                try:
+                    lang = await get_user_lang(uid)
+                    key = 'moon_new_msg' if phase == 'new' else 'moon_full_msg'
+                    await bot.send_message(uid, t(lang, key), parse_mode="Markdown", reply_markup=back_button(lang))
+                    await asyncio.sleep(0.05)
+                except Exception as e:
+                    logger.error(f"Moon notif error {uid}: {e}")
+
+async def inactive_reminder_loop():
+    while True:
+        now = datetime.now(MOSCOW_TZ)
+        target = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        await asyncio.sleep((target - now).total_seconds())
+        user_ids = await get_inactive_users(days=3)
+        for uid in user_ids:
+            try:
+                lang = await get_user_lang(uid)
+                await bot.send_message(uid, t(lang,'inactive_reminder'), parse_mode="Markdown", reply_markup=back_button(lang))
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.error(f"Inactive reminder error {uid}: {e}")
 
 # ─── COMMAND HANDLERS ─────────────────────────────────────────────────────────
 @dp.message(CommandStart())
@@ -991,23 +1107,6 @@ async def cancel_input_cb(callback: CallbackQuery):
     await callback.message.edit_text(t(lang,'main_menu_title'), parse_mode="Markdown", reply_markup=main_menu(lang))
     await callback.answer()
 
-@dp.callback_query(F.data == "readings_menu")
-async def readings_menu_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'readings_menu_title'), parse_mode="Markdown", reply_markup=readings_menu_kb(lang))
-    await callback.answer()
-
-@dp.callback_query(F.data == "esoterics_menu")
-async def esoterics_menu_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'esoterics_menu_title'), parse_mode="Markdown", reply_markup=esoterics_menu_kb(lang))
-    await callback.answer()
-
-@dp.callback_query(F.data == "account_menu")
-async def account_menu_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'account_menu_title'), parse_mode="Markdown", reply_markup=account_menu_kb(lang))
-    await callback.answer()
 
 @dp.callback_query(F.data == "tarot_menu")
 async def tarot_menu_cb(callback: CallbackQuery):
@@ -1366,8 +1465,102 @@ async def pre_checkout_handler(pcq: PreCheckoutQuery):
 @dp.message(F.successful_payment)
 async def successful_payment_handler(message: Message):
     lang = await get_user_lang(message.from_user.id)
-    expiry = await grant_subscription(message.from_user.id, 30)
-    await message.answer(t(lang,'sub_activated',date=expiry.strftime('%d.%m.%Y')), parse_mode="Markdown", reply_markup=main_menu(lang))
+    payload = message.successful_payment.invoice_payload
+    if payload == "gift_30d_stars":
+        import secrets
+        code = "GIFT" + secrets.token_hex(4).upper()
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("INSERT OR IGNORE INTO promo_codes (code,days,max_uses) VALUES (?,30,1)", (code,))
+            await db.commit()
+        await message.answer(t(lang,'gift_sub_created',code=code), parse_mode="Markdown", reply_markup=main_menu(lang))
+    else:
+        expiry = await grant_subscription(message.from_user.id, 30)
+        await message.answer(t(lang,'sub_activated',date=expiry.strftime('%d.%m.%Y')), parse_mode="Markdown", reply_markup=main_menu(lang))
+
+# ─── CALLBACKS: NEW FEATURES ──────────────────────────────────────────────────
+@dp.callback_query(F.data == "tarot_cc")
+async def tarot_cc_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "tarot_cc_question", "tarot_cc_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "tarot_yn")
+async def tarot_yn_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "tarot_yn_question", "tarot_yn_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "career_menu")
+async def career_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'career_menu_title'), parse_mode="Markdown", reply_markup=career_menu_kb(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data.in_({"career_money","career_job","career_biz"}))
+async def career_action_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await _set_input_state(callback, callback.data, callback.data + "_prompt", lang)
+
+@dp.callback_query(F.data == "card_year")
+async def card_year_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    if not await can_use_bot(uid):
+        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await callback.answer(); return
+    profile = await get_profile(uid)
+    if not profile.get('birth_date'):
+        await _set_input_state(callback, "card_year", "card_year_prompt", lang)
+        return
+    year = datetime.now().year
+    card = random.Random(hash(f"{uid}:{year}")).choice(TAROT_CARDS)
+    await callback.message.edit_text(t(lang,'pulling_card'), parse_mode="Markdown")
+    await _do_request(uid, callback.from_user.username, "card_year",
+                      callback.message.chat.id, callback.message.message_id,
+                      f"Год: {year}. Карта года: {card}. Дата рождения: {profile['birth_date']}. Дай глубокий архетипический прогноз на {year} год через эту карту. 250–350 слов.", lang,
+                      f"🗓 *Карта года — {year}*\n\n*{card}*")
+    await callback.answer()
+
+@dp.callback_query(F.data == "my_horo")
+async def my_horo_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    profile = await get_profile(uid)
+    zodiac = profile.get('zodiac')
+    if zodiac:
+        sign_name = ZODIAC_NAMES.get(lang, ZODIAC_NAMES['ru']).get(zodiac, zodiac)
+        await callback.message.edit_text(f"📅 *{sign_name}*", parse_mode="Markdown",
+                                         reply_markup=horoscope_period_kb(zodiac, lang))
+    else:
+        await callback.message.edit_text(t(lang,'horoscope_title'), parse_mode="Markdown",
+                                         reply_markup=horoscope_signs_kb(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data == "history_view")
+async def history_view_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    history = await get_reading_history(uid)
+    if not history:
+        text = t(lang,'history_empty')
+    else:
+        text = t(lang,'history_title')
+        for action, header, created_at in history:
+            entry = (header or action)[:80]
+            date_str = created_at[:16] if created_at else "—"
+            text += f"🔸 {entry}\n_🕐 {date_str}_\n\n"
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_back'), callback_data="profile")
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "tarot_library")
+async def tarot_library_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "tarot_library", "tarot_library_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "gift_sub")
+async def gift_sub_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
+                           description=t(lang,'invoice_desc'), payload="gift_30d_stars",
+                           currency="XTR", prices=[LabeledPrice(label="Gift Subscription", amount=SUBSCRIPTION_STARS)])
+    await callback.answer()
 
 # ─── MESSAGE HANDLER ──────────────────────────────────────────────────────────
 @dp.message()
@@ -1550,6 +1743,40 @@ async def handle_message(message: Message):
     elif action == "free_question":
         prompt = text
         header = ""
+    elif action == "tarot_cc_question":
+        cards = random.sample(TAROT_CARDS, 10)
+        pos = ["Суть","Перекрёст","Корона","Основа","Прошлое","Будущее","Ты сам","Окружение","Надежды","Итог"]
+        cards_text = "\n".join([f"• {p}: {c}" for p,c in zip(pos,cards)])
+        header_text = "\n".join([f"*{p}:* {c}" for p,c in zip(pos,cards)])
+        prompt = f"Ситуация: «{text}»\n\nКельтский крест:\n{cards_text}\n\nДай детальную интерпретацию каждой позиции. 500–700 слов."
+        header = f"✡️ *Кельтский крест*\n\n*Ситуация:* {text}\n\n{header_text}"
+    elif action == "tarot_yn_question":
+        card = random.choice(TAROT_CARDS)
+        prompt = f"Вопрос: «{text}»\nКарта: {card}\n\nОтветь ТОЛЬКО «Да» или «Нет» в первой строке. Затем объясни через карту (50–80 слов)."
+        header = f"☯️ *Да / Нет*\n\n*Вопрос:* {text}\n\n*Карта:* {card}"
+    elif action == "career_money":
+        card = random.choice(TAROT_CARDS)
+        prompt = f"Ситуация: «{text}»\nКарта: {card}\n\nДай расклад на финансы: текущая энергия денег, что блокирует доход, совет как улучшить финансовый поток. 200–250 слов."
+        header = f"💰 *Деньги и финансы*\n\n*Карта:* {card}"
+    elif action == "career_job":
+        cards = random.sample(TAROT_CARDS, 3)
+        prompt = f"Ситуация: «{text}»\nРасклад:\n• Текущая позиция: {cards[0]}\n• Препятствия: {cards[1]}\n• Совет: {cards[2]}\n\nДай интерпретацию применительно к карьере. 200–250 слов."
+        header = f"💼 *Карьера и работа*\n\n🎯 *Позиция:* {cards[0]}\n🚧 *Препятствие:* {cards[1]}\n💡 *Совет:* {cards[2]}"
+    elif action == "career_biz":
+        cards = random.sample(TAROT_CARDS, 3)
+        prompt = f"Запрос: «{text}»\nРасклад:\n• Потенциал: {cards[0]}\n• Риски: {cards[1]}\n• Ключ успеха: {cards[2]}\n\n200–250 слов."
+        header = f"🚀 *Бизнес и проекты*\n\n✨ *Потенциал:* {cards[0]}\n⚠️ *Риски:* {cards[1]}\n🔑 *Успех:* {cards[2]}"
+    elif action == "card_year":
+        year = datetime.now().year
+        if text:
+            await save_profile_field(uid, "birth_date", text)
+        birth = text or profile.get('birth_date', '')
+        card = random.Random(hash(f"{uid}:{year}")).choice(TAROT_CARDS)
+        prompt = f"Год: {year}. Карта года: {card}. Дата рождения: {birth}. Дай архетипический прогноз на {year} год через эту карту. 250–350 слов."
+        header = f"🗓 *Карта года — {year}*\n\n*{card}*"
+    elif action == "tarot_library":
+        prompt = f"Расскажи подробно о карте или теме Таро: «{text}». История, символизм, значение в прямом и перевёрнутом положении, типичные интерпретации. 300–400 слов."
+        header = f"📚 *Библиотека Таро*\n\n*Тема:* {text}"
     else:
         await _edit_or_send(chat_id, prompt_msg_id, t(lang,'unknown_cmd'), back_button(lang))
         return
@@ -1568,6 +1795,8 @@ async def main():
     await init_db()
     await set_commands()
     asyncio.create_task(daily_broadcast_loop())
+    asyncio.create_task(moon_notification_loop())
+    asyncio.create_task(inactive_reminder_loop())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
