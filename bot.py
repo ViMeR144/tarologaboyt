@@ -723,6 +723,46 @@ def back_button(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_main_menu'), callback_data="back_main")
     return kb.as_markup()
 
+# maps action → parent menu to return to after a result
+ACTION_BACK: dict[str, str] = {
+    # Taро → меню таро
+    "tarot_1": "tarot_menu", "tarot_3_question": "tarot_menu",
+    "tarot_5_question": "tarot_menu", "tarot_cc_question": "tarot_menu",
+    "tarot_yn_question": "tarot_menu",
+    # Любовь → меню любви
+    "love_thinking": "love_menu", "love_couple": "love_menu",
+    "love_continue": "love_menu", "love_future": "love_menu",
+    # Карьера → меню карьеры
+    "career_money": "career_menu", "career_job": "career_menu", "career_biz": "career_menu",
+    # Руны → меню рун
+    "rune_1": "rune_menu", "rune_3": "rune_menu",
+    # Прямо из "Гаданий"
+    "dream_interp": "readings_menu", "palmistry": "readings_menu",
+    # Нумерология стр. 1
+    "num_date": "numerology_menu", "num_name": "numerology_menu",
+    "natal_chart": "numerology_menu", "compatibility": "numerology_menu",
+    # Нумерология стр. 2
+    "num_fate": "num_page_2", "num_square": "num_page_2",
+    "num_year": "num_page_2", "num_address": "num_page_2",
+    "num_trio": "num_page_2", "num_biz": "num_page_2",
+    # Прямо из "Эзотерики"
+    "week_spread": "esoterics_menu", "moon_calendar": "esoterics_menu",
+    "lucky_number": "esoterics_menu", "ritual_day": "esoterics_menu",
+    "free_question": "esoterics_menu",
+    # Аккаунт
+    "tarot_library": "account_menu",
+    # Главное меню
+    "card_year": "back_main",
+}
+
+def result_keyboard(lang: str, back_to: str = "back_main"):
+    kb = InlineKeyboardBuilder()
+    if back_to == "back_main":
+        kb.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
+    else:
+        kb.button(text=t(lang, 'btn_back'), callback_data=back_to)
+    return kb.as_markup()
+
 def cancel_keyboard(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_cancel'), callback_data="cancel_input")
@@ -878,7 +918,8 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
     streak, milestone = await update_streak(uid)
     answer = await ask_claude(prompt, lang)
     result = f"{result_header}\n\n{answer}" if result_header else answer
-    await _edit_or_send(chat_id, prompt_msg_id, result, back_button(lang))
+    back_to = ACTION_BACK.get(action, "back_main")
+    await _edit_or_send(chat_id, prompt_msg_id, result, result_keyboard(lang, back_to))
     await save_reading_history(uid, action, result_header)
     if milestone:
         await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
