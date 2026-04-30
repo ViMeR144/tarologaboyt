@@ -635,38 +635,54 @@ def language_keyboard():
 
 def main_menu(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
-    # Быстрые
     kb.button(text=t(lang,'btn_card_day'), callback_data="card_of_day")
-    kb.button(text=t(lang,'btn_week'), callback_data="week_spread")
     kb.button(text=t(lang,'btn_card_year'), callback_data="card_year")
-    kb.button(text=t(lang,'btn_my_horo'), callback_data="my_horo")
-    # Гадания
+    kb.button(text=t(lang,'btn_readings_menu'), callback_data="readings_menu")
+    kb.button(text=t(lang,'btn_esoterics_menu'), callback_data="esoterics_menu")
+    kb.button(text=t(lang,'btn_account_menu'), callback_data="account_menu")
+    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
+    kb.adjust(2, 1, 1, 1, 1)
+    return kb.as_markup()
+
+def readings_submenu_kb(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_tarot'), callback_data="tarot_menu")
     kb.button(text=t(lang,'btn_love'), callback_data="love_menu")
     kb.button(text=t(lang,'btn_career'), callback_data="career_menu")
     kb.button(text=t(lang,'btn_runes'), callback_data="rune_menu")
     kb.button(text=t(lang,'btn_dream'), callback_data="dream_interp")
     kb.button(text=t(lang,'btn_palmistry'), callback_data="palmistry")
-    # Эзотерика
+    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.adjust(2, 2, 2, 1)
+    return kb.as_markup()
+
+def esoterics_submenu_kb(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_numerology'), callback_data="numerology_menu")
     kb.button(text=t(lang,'btn_horoscope'), callback_data="horoscope")
+    kb.button(text=t(lang,'btn_my_horo'), callback_data="my_horo")
+    kb.button(text=t(lang,'btn_week'), callback_data="week_spread")
     kb.button(text=t(lang,'btn_moon'), callback_data="moon_calendar")
     kb.button(text=t(lang,'btn_lucky'), callback_data="lucky_number")
     kb.button(text=t(lang,'btn_ritual'), callback_data="ritual_day")
     kb.button(text=t(lang,'btn_question'), callback_data="free_question")
-    # Аккаунт
+    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.adjust(2, 2, 2, 2, 1)
+    return kb.as_markup()
+
+def account_submenu_kb(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_subscription'), callback_data="subscription")
     kb.button(text=t(lang,'btn_promo'), callback_data="promo_input")
-    kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
+    kb.button(text=t(lang,'btn_gift_sub'), callback_data="gift_sub")
     kb.button(text=t(lang,'btn_referral'), callback_data="referral")
+    kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_profile'), callback_data="profile")
-    kb.button(text=t(lang,'btn_support'), callback_data="support")
     kb.button(text=t(lang,'btn_history'), callback_data="history_view")
     kb.button(text=t(lang,'btn_tarot_library'), callback_data="tarot_library")
-    kb.button(text=t(lang,'btn_gift_sub'), callback_data="gift_sub")
-    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
-    # быстрые  гадания      эзотерика  аккаунт           язык
-    kb.adjust(2,2,  2,2,2,1,  2,2,2,  2,2,2,2,1,  1)
+    kb.button(text=t(lang,'btn_support'), callback_data="support")
+    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.adjust(2, 2, 2, 2, 1, 1)
     return kb.as_markup()
 
 def back_button(lang: str = 'ru'):
@@ -686,7 +702,7 @@ def tarot_menu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_tarot5'), callback_data="tarot_5")
     kb.button(text=t(lang,'btn_tarot_cc'), callback_data="tarot_cc")
     kb.button(text=t(lang,'btn_tarot_yn'), callback_data="tarot_yn")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_back'), callback_data="readings_menu")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -696,7 +712,7 @@ def love_menu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_love_couple'), callback_data="love_couple")
     kb.button(text=t(lang,'btn_love_continue'), callback_data="love_continue")
     kb.button(text=t(lang,'btn_love_future'), callback_data="love_future")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_back'), callback_data="readings_menu")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -706,7 +722,7 @@ def numerology_menu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_num_name'), callback_data="num_name")
     kb.button(text=t(lang,'btn_natal'), callback_data="natal_chart")
     kb.button(text=t(lang,'btn_compat'), callback_data="compatibility")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_back'), callback_data="esoterics_menu")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -714,7 +730,7 @@ def rune_menu_kb(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_rune1'), callback_data="rune_1")
     kb.button(text=t(lang,'btn_rune3'), callback_data="rune_3")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_back'), callback_data="readings_menu")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -731,7 +747,7 @@ def horoscope_period_kb(sign: str, lang: str = 'ru'):
     kb.button(text=t(lang,'btn_horo_day'), callback_data=f"horo_day_{sign}")
     kb.button(text=t(lang,'btn_horo_week'), callback_data=f"horo_week_{sign}")
     kb.button(text=t(lang,'btn_horo_month'), callback_data=f"horo_month_{sign}")
-    kb.button(text=t(lang,'btn_back'), callback_data="horoscope")
+    kb.button(text=t(lang,'btn_back'), callback_data="esoterics_menu")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -751,7 +767,7 @@ def career_menu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_career_money'), callback_data="career_money")
     kb.button(text=t(lang,'btn_career_job'), callback_data="career_job")
     kb.button(text=t(lang,'btn_career_biz'), callback_data="career_biz")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_back'), callback_data="readings_menu")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -1107,6 +1123,23 @@ async def cancel_input_cb(callback: CallbackQuery):
     await callback.message.edit_text(t(lang,'main_menu_title'), parse_mode="Markdown", reply_markup=main_menu(lang))
     await callback.answer()
 
+@dp.callback_query(F.data == "readings_menu")
+async def readings_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'readings_menu_title'), parse_mode="Markdown", reply_markup=readings_submenu_kb(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data == "esoterics_menu")
+async def esoterics_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'esoterics_menu_title'), parse_mode="Markdown", reply_markup=esoterics_submenu_kb(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data == "account_menu")
+async def account_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'account_menu_title'), parse_mode="Markdown", reply_markup=account_submenu_kb(lang))
+    await callback.answer()
 
 @dp.callback_query(F.data == "tarot_menu")
 async def tarot_menu_cb(callback: CallbackQuery):
