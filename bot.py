@@ -92,6 +92,16 @@ TEXTS = {
         'num_menu_title': "🔢 *Нумерология*\n\nВыберите метод:",
         'btn_num_date': "📅 По дате рождения", 'btn_num_name': "✏️ По имени",
         'btn_natal': "🌠 Натальная карта", 'btn_compat': "💑 Совместимость пар",
+        'btn_num_fate': "🔮 Число судьбы", 'btn_num_square': "📊 Пифагорейский квадрат",
+        'btn_num_address': "🏠 Нумерология адреса", 'btn_num_year': "🗓 Личный год",
+        'btn_num_trio': "👨‍👩‍👦 Треугольник отношений", 'btn_num_biz': "💼 Нумерология бизнеса",
+        'btn_page_next': "➡️ Следующая страница", 'btn_page_prev': "⬅️ Предыдущая страница",
+        'num_fate_prompt': "🔮 *Число судьбы*\n\nВведите полное имя и дату рождения:\n\n_Например: Иван Иванов Иванович, 15.03.1995_",
+        'num_square_prompt': "📊 *Пифагорейский квадрат*\n\nВведите дату рождения: *ДД.ММ.ГГГГ*\n\n_Например: 15.03.1995_",
+        'num_address_prompt': "🏠 *Нумерология адреса*\n\nВведите адрес (улица и номер дома, квартира):\n\n_Например: Ленина 42, кв 7_",
+        'num_year_prompt': "🗓 *Личный год*\n\nВведите дату рождения: *ДД.ММ.ГГГГ*",
+        'num_trio_prompt': "👨‍👩‍👦 *Треугольник отношений*\n\nВведите три даты рождения через запятую:\n\n_Например: 15.03.1995, 22.07.1993, 01.01.2000_",
+        'num_biz_prompt': "💼 *Нумерология бизнеса*\n\nВведите название компании или проекта и дату основания:\n\n_Например: ООО Мистра, 01.01.2020_",
         'horoscope_title': "📅 *Гороскоп*\n\nВыберите знак зодиака:",
         'btn_horo_day': "☀️ На сегодня", 'btn_horo_week': "📅 На неделю", 'btn_horo_month': "🌙 На месяц",
         'rune_menu_title': "🪨 *Расклад на рунах*\n\nВыберите вид:",
@@ -213,6 +223,16 @@ TEXTS = {
         'num_menu_title': "🔢 *Numerology*\n\nChoose method:",
         'btn_num_date': "📅 By birth date", 'btn_num_name': "✏️ By name",
         'btn_natal': "🌠 Natal chart", 'btn_compat': "💑 Couple compatibility",
+        'btn_num_fate': "🔮 Destiny Number", 'btn_num_square': "📊 Pythagorean Square",
+        'btn_num_address': "🏠 Address Numerology", 'btn_num_year': "🗓 Personal Year",
+        'btn_num_trio': "👨‍👩‍👦 Relationship Triangle", 'btn_num_biz': "💼 Business Numerology",
+        'btn_page_next': "➡️ Next page", 'btn_page_prev': "⬅️ Previous page",
+        'num_fate_prompt': "🔮 *Destiny Number*\n\nEnter your full name and birth date:\n\n_Example: John Smith, 15.03.1995_",
+        'num_square_prompt': "📊 *Pythagorean Square*\n\nEnter birth date: *DD.MM.YYYY*\n\n_Example: 15.03.1995_",
+        'num_address_prompt': "🏠 *Address Numerology*\n\nEnter your address (street, house/apartment number):\n\n_Example: Main St 42, apt 7_",
+        'num_year_prompt': "🗓 *Personal Year*\n\nEnter your birth date: *DD.MM.YYYY*",
+        'num_trio_prompt': "👨‍👩‍👦 *Relationship Triangle*\n\nEnter three birth dates separated by commas:\n\n_Example: 15.03.1995, 22.07.1993, 01.01.2000_",
+        'num_biz_prompt': "💼 *Business Numerology*\n\nEnter the company/project name and founding date:\n\n_Example: Mystra LLC, 01.01.2020_",
         'horoscope_title': "📅 *Horoscope*\n\nChoose your zodiac sign:",
         'btn_horo_day': "☀️ Today", 'btn_horo_week': "📅 This week", 'btn_horo_month': "🌙 This month",
         'rune_menu_title': "🪨 *Rune Reading*\n\nChoose type:",
@@ -722,6 +742,20 @@ def numerology_menu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_num_name'), callback_data="num_name")
     kb.button(text=t(lang,'btn_natal'), callback_data="natal_chart")
     kb.button(text=t(lang,'btn_compat'), callback_data="compatibility")
+    kb.button(text=t(lang,'btn_page_next'), callback_data="num_page_2")
+    kb.button(text=t(lang,'btn_back'), callback_data="esoterics_menu")
+    kb.adjust(1)
+    return kb.as_markup()
+
+def numerology_menu_kb_p2(lang: str = 'ru'):
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_num_fate'), callback_data="num_fate")
+    kb.button(text=t(lang,'btn_num_square'), callback_data="num_square")
+    kb.button(text=t(lang,'btn_num_year'), callback_data="num_year")
+    kb.button(text=t(lang,'btn_num_address'), callback_data="num_address")
+    kb.button(text=t(lang,'btn_num_trio'), callback_data="num_trio")
+    kb.button(text=t(lang,'btn_num_biz'), callback_data="num_biz")
+    kb.button(text=t(lang,'btn_page_prev'), callback_data="numerology_menu")
     kb.button(text=t(lang,'btn_back'), callback_data="esoterics_menu")
     kb.adjust(1)
     return kb.as_markup()
@@ -1158,6 +1192,36 @@ async def numerology_menu_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
     await callback.message.edit_text(t(lang,'num_menu_title'), parse_mode="Markdown", reply_markup=numerology_menu_kb(lang))
     await callback.answer()
+
+@dp.callback_query(F.data == "num_page_2")
+async def num_page_2_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await callback.message.edit_text(t(lang,'num_menu_title'), parse_mode="Markdown", reply_markup=numerology_menu_kb_p2(lang))
+    await callback.answer()
+
+@dp.callback_query(F.data == "num_fate")
+async def num_fate_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "num_fate", "num_fate_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "num_square")
+async def num_square_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "num_square", "num_square_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "num_year")
+async def num_year_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "num_year", "num_year_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "num_address")
+async def num_address_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "num_address", "num_address_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "num_trio")
+async def num_trio_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "num_trio", "num_trio_prompt", await get_user_lang(callback.from_user.id))
+
+@dp.callback_query(F.data == "num_biz")
+async def num_biz_cb(callback: CallbackQuery):
+    await _set_input_state(callback, "num_biz", "num_biz_prompt", await get_user_lang(callback.from_user.id))
 
 @dp.callback_query(F.data == "rune_menu")
 async def rune_menu_cb(callback: CallbackQuery):
@@ -1757,6 +1821,24 @@ async def handle_message(message: Message):
     elif action == "compatibility":
         prompt = f"Даты рождения пары: {text}\n\nАнализ совместимости:\n1. Числа жизненного пути обоих (с расчётами)\n2. Совместимость\n3. Сильные стороны пары\n4. Зоны напряжения\n5. Прогноз\n300–400 слов."
         header = f"💑 *Совместимость пары*\n\n*Даты:* {text}"
+    elif action == "num_fate":
+        prompt = f"Имя и дата: {text}\n\nРассчитай число судьбы (с пошаговым расчётом по всем буквам и цифрам даты), дай глубокую интерпретацию предназначения. 250–350 слов."
+        header = f"🔮 *Число судьбы*\n\n*Данные:* {text}"
+    elif action == "num_square":
+        prompt = f"Дата рождения: {text}\n\nПострой пифагорейский квадрат (матрицу судьбы): рассчитай все числа, опиши каждую ячейку и её значение. 300–400 слов."
+        header = f"📊 *Пифагорейский квадрат*\n\n*Дата:* {text}"
+    elif action == "num_year":
+        prompt = f"Дата рождения: {text}. Текущий год: {datetime.now().year}.\n\nРассчитай личный год (с формулой), опиши его энергию и главные темы. 200–250 слов."
+        header = f"🗓 *Личный год — {datetime.now().year}*"
+    elif action == "num_address":
+        prompt = f"Адрес: {text}\n\nРассчитай нумерологию адреса (сложи все цифры номера дома/квартиры), объясни энергетику места, что это означает для жильцов. 200–250 слов."
+        header = f"🏠 *Нумерология адреса*\n\n*Адрес:* {text}"
+    elif action == "num_trio":
+        prompt = f"Три даты рождения: {text}\n\nАнализ треугольника отношений: рассчитай числа жизненного пути всех троих, совместимость попарно и в треугольнике, динамика взаимодействия. 300–400 слов."
+        header = f"👨‍👩‍👦 *Треугольник отношений*\n\n*Даты:* {text}"
+    elif action == "num_biz":
+        prompt = f"Бизнес: {text}\n\nНумерология бизнеса: рассчитай число названия компании и дату основания, их совместимость, энергетика бизнеса, прогноз, советы. 250–300 слов."
+        header = f"💼 *Нумерология бизнеса*\n\n*Данные:* {text}"
     elif action == "love_thinking":
         card = random.choice(TAROT_CARDS)
         prompt = f"Запрос: «{text}»\nКарта: {card}\n\nОтветь на вопрос 'Думает ли он/она обо мне?' Дай честный и глубокий ответ. 150–200 слов."
