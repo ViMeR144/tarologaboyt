@@ -6,6 +6,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+import aiohttp
 import aiosqlite
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
@@ -20,11 +21,16 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 YUKASSA_TOKEN = os.getenv("YUKASSA_TOKEN", "")
+STRIPE_TOKEN = os.getenv("STRIPE_TOKEN", "")
+CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN", "")
+CRYPTOBOT_API = "https://pay.crypt.bot/api"
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "support")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 
 SUBSCRIPTION_STARS = 200
 SUBSCRIPTION_RUB = 29900
+SUBSCRIPTION_USD = 499  # cents ($4.99)
+SUBSCRIPTION_USDT = "4.99"
 FREE_REQUESTS = 5
 DB_PATH = os.getenv("DB_PATH", "tarot_bot.db")
 MOSCOW_TZ = timezone(timedelta(hours=3))
@@ -142,6 +148,8 @@ TEXTS = {
         'notif_desc': "Каждое утро в *8:00* Мистра присылает карту дня.\nПодписчики получают развёрнутую интерпретацию.",
         'paywall': "🔒 *Лимит бесплатных запросов исчерпан*\n\nВы использовали все {free} бесплатных запросов.\n\n*Подписка на 30 дней — {stars} ⭐*\n• Безлимитные расклады Таро и Нумерология\n• Гороскоп, Луна, Ритуалы, Карта недели\n• Любовные расклады и многое другое",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Карта / СБП — 299 ₽",
+        'btn_buy_card': "💳 Visa / Mastercard — $4.99",
+        'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
         'sub_active': "💎 *Ваша подписка*\n\n✅ Активна до: *{date}*\n📊 Запросов: *{count}*\n🔥 Серия: *{streak} дней*\n\nНаслаждайтесь безлимитным доступом! 🔮",
         'sub_inactive': "💎 *Подписка на Мистру*\n\n🆓 Бесплатных осталось: *{remaining}/{free}*\n🔥 Серия: *{streak} дней*\n\n*Подписка включает:*\n• Таро, Нумерология, Натальная карта\n• Гороскоп, Луна, Ритуалы, Руны\n• Любовные расклады\n• Ежедневная рассылка в 8:00\n\n💰 *{stars} Telegram Stars* / 30 дней",
         'sub_activated': "✅ *Подписка активирована!*\n\n🔮 Добро пожаловать в безграничный мир Мистры!\n📅 Действует до: *{date}*\n\nДелайте неограниченные расклады! 🌟",
@@ -273,6 +281,8 @@ TEXTS = {
         'notif_desc': "Every morning at *8:00* Mystra sends you the card of the day.\nSubscribers get a detailed interpretation.",
         'paywall': "🔒 *Free request limit reached*\n\nYou've used all {free} free requests.\n\n*30-day Subscription — {stars} ⭐*\n• Unlimited Tarot spreads & Numerology\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads and much more",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Card / SBP — 299 ₽",
+        'btn_buy_card': "💳 Visa / Mastercard — $4.99",
+        'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
         'sub_active': "💎 *Your Subscription*\n\n✅ Active until: *{date}*\n📊 Requests: *{count}*\n🔥 Streak: *{streak} days*\n\nEnjoy unlimited access! 🔮",
         'sub_inactive': "💎 *Mystra Subscription*\n\n🆓 Free requests left: *{remaining}/{free}*\n🔥 Streak: *{streak} days*\n\n*Subscription includes:*\n• Tarot, Numerology, Natal Chart, Runes\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads\n• Daily broadcast at 8:00\n\n💰 *{stars} Telegram Stars* / 30 days",
         'sub_activated': "✅ *Subscription activated!*\n\n🔮 Welcome to Mystra's limitless realm!\n📅 Active until: *{date}*\n\nEnjoy unlimited spreads! 🌟",
@@ -375,6 +385,9 @@ async def init_db():
         await db.execute("""CREATE TABLE IF NOT EXISTS readings_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
             action TEXT, header TEXT, created_at TEXT DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS crypto_invoices (
+            invoice_id INTEGER PRIMARY KEY, user_id INTEGER,
+            created_at TEXT DEFAULT (datetime('now')))""")
         for col in ["notifications INTEGER DEFAULT 1","language TEXT DEFAULT NULL",
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
                     "birth_date TEXT DEFAULT NULL","full_name TEXT DEFAULT NULL",
@@ -810,6 +823,10 @@ def paywall_keyboard(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
     if YUKASSA_TOKEN:
         kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
+    if STRIPE_TOKEN:
+        kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
+    if CRYPTOBOT_TOKEN:
+        kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
     kb.button(text=t(lang,'btn_main_menu'), callback_data="back_main")
     kb.adjust(1)
     return kb.as_markup()
@@ -820,6 +837,10 @@ def subscription_keyboard(has_sub: bool, lang: str = 'ru'):
         kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
         if YUKASSA_TOKEN:
             kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
+        if STRIPE_TOKEN:
+            kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
+        if CRYPTOBOT_TOKEN:
+            kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
     kb.adjust(1)
     return kb.as_markup()
@@ -934,6 +955,61 @@ async def inactive_reminder_loop():
             except Exception as e:
                 logger.error(f"Inactive reminder error {uid}: {e}")
 
+async def cryptobot_create_invoice(user_id: int) -> dict | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{CRYPTOBOT_API}/createInvoice",
+                headers={"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN},
+                params={"asset": "USDT", "amount": SUBSCRIPTION_USDT,
+                        "description": "Mystra — подписка 30 дней",
+                        "payload": str(user_id), "expires_in": 3600},
+            ) as r:
+                data = await r.json()
+        return data.get("result") if data.get("ok") else None
+    except Exception as e:
+        logger.error(f"CryptoBot create invoice error: {e}")
+        return None
+
+async def check_crypto_payments():
+    while True:
+        await asyncio.sleep(30)
+        if not CRYPTOBOT_TOKEN:
+            continue
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                cur = await db.execute("SELECT invoice_id, user_id FROM crypto_invoices")
+                pending = await cur.fetchall()
+                # clean up invoices older than 2 hours
+                await db.execute("DELETE FROM crypto_invoices WHERE created_at < datetime('now', '-2 hours')")
+                await db.commit()
+            if not pending:
+                continue
+            ids = ",".join(str(r[0]) for r in pending)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{CRYPTOBOT_API}/getInvoices",
+                    headers={"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN},
+                    params={"invoice_ids": ids, "status": "paid"},
+                ) as r:
+                    data = await r.json()
+            if not data.get("ok"):
+                continue
+            paid_ids = {inv["invoice_id"] for inv in data["result"].get("items", [])}
+            pending_map = {r[0]: r[1] for r in pending}
+            for invoice_id, user_id in pending_map.items():
+                if invoice_id in paid_ids:
+                    expiry = await grant_subscription(user_id, 30)
+                    lang = await get_user_lang(user_id)
+                    await bot.send_message(
+                        user_id, t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
+                        parse_mode="Markdown", reply_markup=main_menu(lang))
+                    async with aiosqlite.connect(DB_PATH) as db:
+                        await db.execute("DELETE FROM crypto_invoices WHERE invoice_id=?", (invoice_id,))
+                        await db.commit()
+        except Exception as e:
+            logger.error(f"check_crypto_payments error: {e}")
+
 # ─── COMMAND HANDLERS ─────────────────────────────────────────────────────────
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
@@ -983,7 +1059,7 @@ async def cmd_menu(message: Message):
 async def cmd_myid(message: Message):
     await message.answer(f"`{message.from_user.id}`", parse_mode="Markdown")
 
-@dp.message(Command("admin"))
+@dp.message(Command("admin", "a"))
 async def cmd_admin(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
@@ -992,11 +1068,25 @@ async def cmd_admin(message: Message):
             f"👥 Пользователей: *{total}* (🇷🇺 {ru} / 🇬🇧 {en})\n"
             f"📊 Запросов: *{reqs}*\n💎 Подписок: *{subs}*\n"
             f"🔔 Рассылка: *{notif}*\n⛔ Заблокировано: *{banned}*\n\n"
-            f"*Команды:*\n`/broadcast <текст>` — рассылка всем\n"
-            f"`/grant <id>` — подписка 30д\n`/ban <id>` — бан\n`/unban <id>` — разбан\n"
-            f"`/userinfo <id>` — инфо о юзере\n`/promo create <КОД> <ДНЕЙ> [МАКС]` — создать промокод\n"
-            f"`/promo list` — список промокодов\n`/promo delete <КОД>` — удалить\n\n"
-            f"*Последние запросы:*\n")
+            f"*👤 Пользователи:*\n"
+            f"`/userinfo <id>` — подробная инфо\n"
+            f"`/find @username` — поиск по нику/id\n"
+            f"`/ban <id>` — заблокировать\n"
+            f"`/unban <id>` — разблокировать\n\n"
+            f"*💎 Подписки:*\n"
+            f"`/grant <id> [дней]` — выдать подписку\n"
+            f"`/adddays <id> <дней>` — продлить подписку\n"
+            f"`/revoke <id>` — отозвать подписку\n"
+            f"`/subs` — список активных подписчиков\n\n"
+            f"*🎯 Лимиты:*\n"
+            f"`/resetlimit <id>` — сбросить счётчик запросов\n"
+            f"`/setbonus <id> <кол-во>` — установить бонусные запросы\n\n"
+            f"*📢 Прочее:*\n"
+            f"`/broadcast <текст>` — рассылка всем\n"
+            f"`/promo create <КОД> <ДНЕЙ> [МАКС]` — промокод\n"
+            f"`/promo list` — список промокодов\n"
+            f"`/promo delete <КОД>` — удалить\n\n"
+            f"*⏱ Последние запросы:*\n")
     for uid, uname, action, ts in recent:
         label = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
         text += f"• {label} — `{action}` [{ts[:16]}]\n"
@@ -1009,11 +1099,127 @@ async def cmd_grant(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
     parts = message.text.split()
-    if len(parts) != 2 or not parts[1].isdigit():
-        await message.answer("Использование: `/grant <user_id>`", parse_mode="Markdown")
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("Использование: `/grant <user_id> [дней]`\nПо умолчанию: 30 дней", parse_mode="Markdown")
         return
-    expiry = await grant_subscription(int(parts[1]), 30)
-    await message.answer(f"✅ Подписка выдана `{parts[1]}` до {expiry.strftime('%d.%m.%Y')}", parse_mode="Markdown")
+    days = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 30
+    expiry = await grant_subscription(int(parts[1]), days)
+    await message.answer(f"✅ Подписка выдана `{parts[1]}` на {days} дней (до {expiry.strftime('%d.%m.%Y')})", parse_mode="Markdown")
+
+@dp.message(Command("revoke"))
+async def cmd_revoke(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Использование: `/revoke <user_id>`", parse_mode="Markdown")
+        return
+    uid = int(parts[1])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM subscriptions WHERE user_id=?", (uid,))
+        await db.commit()
+    await message.answer(f"🗑 Подписка пользователя `{uid}` удалена.", parse_mode="Markdown")
+
+@dp.message(Command("adddays"))
+async def cmd_adddays(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    parts = message.text.split()
+    if len(parts) != 3 or not parts[1].isdigit() or not parts[2].isdigit():
+        await message.answer("Использование: `/adddays <user_id> <дней>`", parse_mode="Markdown")
+        return
+    uid, days = int(parts[1]), int(parts[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT expires_at FROM subscriptions WHERE user_id=?", (uid,)) as c:
+            row = await c.fetchone()
+    if row:
+        base = datetime.fromisoformat(row[0])
+        if base < datetime.utcnow():
+            base = datetime.utcnow()
+    else:
+        base = datetime.utcnow()
+    expiry = base + timedelta(days=days)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO subscriptions (user_id,expires_at) VALUES (?,?)",
+                         (uid, expiry.isoformat()))
+        await db.commit()
+    await message.answer(f"➕ Добавлено *{days} дней* пользователю `{uid}`.\nПодписка до: *{expiry.strftime('%d.%m.%Y')}*", parse_mode="Markdown")
+
+@dp.message(Command("resetlimit"))
+async def cmd_resetlimit(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Использование: `/resetlimit <user_id>`", parse_mode="Markdown")
+        return
+    uid = int(parts[1])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET request_count=0 WHERE user_id=?", (uid,))
+        await db.commit()
+    await message.answer(f"♻️ Лимит запросов пользователя `{uid}` сброшен до нуля.", parse_mode="Markdown")
+
+@dp.message(Command("setbonus"))
+async def cmd_setbonus(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    parts = message.text.split()
+    if len(parts) != 3 or not parts[1].isdigit() or not parts[2].isdigit():
+        await message.answer("Использование: `/setbonus <user_id> <кол-во>`", parse_mode="Markdown")
+        return
+    uid, bonus = int(parts[1]), int(parts[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET bonus_requests=? WHERE user_id=?", (bonus, uid))
+        await db.commit()
+    await message.answer(f"🎁 Бонусных запросов установлено: *{bonus}* для `{uid}`.", parse_mode="Markdown")
+
+@dp.message(Command("subs"))
+async def cmd_subs(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT s.user_id, u.username, s.expires_at FROM subscriptions s "
+            "LEFT JOIN users u ON u.user_id=s.user_id "
+            "WHERE s.expires_at > datetime('now') ORDER BY s.expires_at DESC"
+        ) as c:
+            rows = await c.fetchall()
+    if not rows:
+        await message.answer("💎 Активных подписчиков нет.")
+        return
+    text = f"💎 *Активные подписки ({len(rows)}):*\n\n"
+    for uid, uname, exp in rows:
+        label = f"@{uname}" if uname and uname != "unknown" else f"`{uid}`"
+        text += f"• {label} — до {exp[:10]}\n"
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+    await message.answer(text, parse_mode="Markdown")
+
+@dp.message(Command("find"))
+async def cmd_find(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    parts = message.text.split()
+    if len(parts) != 2:
+        await message.answer("Использование: `/find @username` или `/find <user_id>`", parse_mode="Markdown")
+        return
+    query = parts[1].lstrip("@")
+    async with aiosqlite.connect(DB_PATH) as db:
+        if query.isdigit():
+            async with db.execute("SELECT user_id,username,request_count,language,first_seen FROM users WHERE user_id=?", (int(query),)) as c:
+                rows = await c.fetchall()
+        else:
+            async with db.execute("SELECT user_id,username,request_count,language,first_seen FROM users WHERE username LIKE ?", (f"%{query}%",)) as c:
+                rows = await c.fetchall()
+    if not rows:
+        await message.answer("❌ Пользователь не найден.")
+        return
+    text = f"🔍 *Результаты поиска:*\n\n"
+    for uid, uname, count, lang, since in rows:
+        sub = await get_subscription_expiry(uid)
+        sub_str = f"до {sub.strftime('%d.%m.%Y')}" if sub else "нет"
+        text += f"• `{uid}` @{uname} | {lang} | {count} запр. | подписка: {sub_str} | с {since[:10]}\n"
+    await message.answer(text, parse_mode="Markdown")
 
 @dp.message(Command("ban"))
 async def cmd_ban(message: Message):
@@ -1555,6 +1761,41 @@ async def buy_rub_cb(callback: CallbackQuery):
                            prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_RUB)])
     await callback.answer()
 
+@dp.callback_query(F.data == "buy_crypto")
+async def buy_crypto_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    if not CRYPTOBOT_TOKEN:
+        await callback.answer(t(lang,'payment_unavail'), show_alert=True); return
+    await callback.answer()
+    invoice = await cryptobot_create_invoice(callback.from_user.id)
+    if not invoice:
+        await callback.message.answer("❌ Ошибка создания инвойса. Попробуйте позже."); return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR IGNORE INTO crypto_invoices (invoice_id, user_id) VALUES (?,?)",
+                         (invoice["invoice_id"], callback.from_user.id))
+        await db.commit()
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💎 Оплатить в CryptoBot", url=invoice["pay_url"])
+    kb.adjust(1)
+    await callback.message.answer(
+        f"💎 *Оплата криптовалютой*\n\n"
+        f"Сумма: *{SUBSCRIPTION_USDT} USDT*\n"
+        f"Срок: *30 дней*\n\n"
+        f"Нажми кнопку ниже — оплати в @CryptoBot.\n"
+        f"Подписка активируется автоматически в течение ~30 секунд после оплаты.",
+        parse_mode="Markdown", reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data == "buy_card")
+async def buy_card_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    if not STRIPE_TOKEN:
+        await callback.answer(t(lang,'payment_unavail'), show_alert=True); return
+    await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
+                           description=t(lang,'invoice_desc'), payload="sub_30d_card",
+                           provider_token=STRIPE_TOKEN, currency="USD",
+                           prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_USD)])
+    await callback.answer()
+
 @dp.pre_checkout_query()
 async def pre_checkout_handler(pcq: PreCheckoutQuery):
     await bot.answer_pre_checkout_query(pcq.id, ok=True)
@@ -1912,6 +2153,7 @@ async def main():
     asyncio.create_task(daily_broadcast_loop())
     asyncio.create_task(moon_notification_loop())
     asyncio.create_task(inactive_reminder_loop())
+    asyncio.create_task(check_crypto_payments())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

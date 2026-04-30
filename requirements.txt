@@ -1,4 +1,5 @@
 ﻿aiogram==3.27.0
 anthropic
 aiosqlite
+aiohttp
 python-dotenv
