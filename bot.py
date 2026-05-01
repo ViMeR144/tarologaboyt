@@ -30,7 +30,7 @@ SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "support")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 
 SUBSCRIPTION_STARS = 100
-SUBSCRIPTION_RUB = 19900
+SUBSCRIPTION_RUB = 25000
 SUBSCRIPTION_USD = 300  # cents ($4.99)
 SUBSCRIPTION_USDT = "3.00"
 FREE_REQUESTS = 5
@@ -152,7 +152,7 @@ TEXTS = {
         'btn_notif_on': "🔔 Включить", 'btn_notif_off': "🔕 Отключить",
         'notif_desc': "Каждое утро в *8:00* Мистра присылает карту дня.\nПодписчики получают развёрнутую интерпретацию.",
         'paywall': "🔒 *Лимит бесплатных запросов исчерпан*\n\nВы использовали все {free} бесплатных запросов.\n\n*Подписка на 30 дней — {stars} ⭐*\n• Безлимитные расклады Таро и Нумерология\n• Гороскоп, Луна, Ритуалы, Карта недели\n• Любовные расклады и многое другое",
-        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Карта / СБП — 299 ₽",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Карта / СБП — 250 ₽",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
         'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
         'sub_active': "💎 *Ваша подписка*\n\n✅ Активна до: *{date}*\n📊 Запросов: *{count}*\n🔥 Серия: *{streak} дней*\n\nНаслаждайтесь безлимитным доступом! 🔮",
@@ -295,7 +295,7 @@ TEXTS = {
         'btn_notif_on': "🔔 Enable", 'btn_notif_off': "🔕 Disable",
         'notif_desc': "Every morning at *8:00* Mystra sends you the card of the day.\nSubscribers get a detailed interpretation.",
         'paywall': "🔒 *Free request limit reached*\n\nYou've used all {free} free requests.\n\n*30-day Subscription — {stars} ⭐*\n• Unlimited Tarot spreads & Numerology\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads and much more",
-        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Card / SBP — 299 ₽",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Card / SBP — 250 ₽",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
         'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
         'sub_active': "💎 *Your Subscription*\n\n✅ Active until: *{date}*\n📊 Requests: *{count}*\n🔥 Streak: *{streak} days*\n\nEnjoy unlimited access! 🔮",
@@ -918,8 +918,7 @@ def career_menu_kb(lang: str = 'ru'):
 def paywall_keyboard(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
-    if YUKASSA_TOKEN:
-        kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
+    kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
     if STRIPE_TOKEN:
         kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
     if CRYPTOBOT_TOKEN:
@@ -932,8 +931,7 @@ def subscription_keyboard(has_sub: bool, lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     if not has_sub:
         kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
-        if YUKASSA_TOKEN:
-            kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
+        kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
         if STRIPE_TOKEN:
             kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
         if CRYPTOBOT_TOKEN:
@@ -1996,7 +1994,7 @@ async def buy_stars_cb(callback: CallbackQuery):
 async def buy_rub_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
     if not YUKASSA_TOKEN:
-        await callback.answer(t(lang,'payment_unavail'), show_alert=True); return
+        await callback.answer("⏳ Оплата картой скоро будет доступна!", show_alert=True); return
     await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
                            description=t(lang,'invoice_desc'), payload="sub_30d_rub",
                            provider_token=YUKASSA_TOKEN, currency="RUB",
