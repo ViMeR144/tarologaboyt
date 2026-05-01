@@ -2957,19 +2957,8 @@ async def handle_message(message: Message):
         await _edit_or_send(chat_id, prompt_msg_id, msg_map.get(status, t(lang,'promo_invalid')), back_button(lang))
         return
 
-    # ── Free chat (no state) ──────────────────────────────────────────────────
+    # ── No active state — ignore message silently ─────────────────────────────
     if not action:
-        if not await can_use_bot(uid):
-            await bot.send_message(uid, t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS),
-                                   parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
-            return
-        proc = await bot.send_message(uid, t(lang,'processing'), parse_mode="Markdown")
-        await log_request(uid, message.from_user.username, "free_chat")
-        streak, milestone = await update_streak(uid)
-        answer = await ask_claude(text, lang)
-        await proc.edit_text(answer, parse_mode="Markdown", reply_markup=back_button(lang))
-        if milestone:
-            await bot.send_message(uid, t(lang,'streak_bonus',days=streak), parse_mode="Markdown")
         return
 
     if not await can_use_bot(uid):
