@@ -1269,18 +1269,11 @@ async def cmd_start(message: Message):
     username = message.from_user.username or "unknown"
     args = message.text.split(maxsplit=1)
     referrer_id = None
-    # deep link: terms accepted on website → /start ta{uid}
+    terms_from_site = False
     if len(args) > 1 and args[1].startswith("ta"):
         try:
-            ta_uid = int(args[1][2:])
-            if ta_uid == uid:
-                await accept_terms(uid)
-                lang = await get_user_lang(uid)
-                await message.answer(
-                    "✅ *Соглашение принято!*\n\nДобро пожаловать в Мистру 🔮"
-                    if lang == 'ru' else
-                    "✅ *Terms accepted!*\n\nWelcome to Mystra 🔮",
-                    parse_mode="Markdown")
+            if int(args[1][2:]) == uid:
+                terms_from_site = True
         except ValueError:
             pass
     if len(args) > 1 and args[1].startswith("ref_"):
@@ -1310,6 +1303,8 @@ async def cmd_start(message: Message):
                 pass
         else:
             await db.commit()
+    if terms_from_site:
+        await accept_terms(uid)
     if not await has_accepted_terms(uid):
         kb = InlineKeyboardBuilder()
         if SITE_URL:
@@ -1386,7 +1381,7 @@ async def cmd_admin(message: Message):
     await show_admin_menu(message)
 
 async def show_admin_menu(message_or_callback):
-    total, reqs, subs, notif, banned, ru, en, recent = await get_admin_stats()
+    total, reqs, subs, notif, banned, ru, en, _ = await get_admin_stats()
     text = (f"👑 *Панель администратора*\n\n"
             f"👥 Всего: *{total}* (🇷🇺 {ru} / 🇬🇧 {en})\n"
             f"💎 Подписок: *{subs}* | 🔔 Рассылка: *{notif}*\n"
@@ -1444,6 +1439,11 @@ async def adm_user_detail_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         return
     target_uid = int(callback.data.split("_")[2])
+    await _refresh_user_card(callback, target_uid)
+    await callback.answer()
+
+async def _refresh_user_card(callback: CallbackQuery, target_uid: int):
+    """Re-render user detail card after an action."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT username, first_seen, request_count, bonus_requests, language, is_banned, streak FROM users WHERE user_id=?",
@@ -1452,7 +1452,6 @@ async def adm_user_detail_cb(callback: CallbackQuery):
         async with db.execute("SELECT expires_at FROM subscriptions WHERE user_id=?", (target_uid,)) as c:
             sub = await c.fetchone()
     if not row:
-        await callback.answer("Пользователь не найден", show_alert=True)
         return
     uname, first_seen, req_count, bonus, lang, is_banned, streak = row
     sub_info = f"до {sub[0][:10]}" if sub else "нет"
@@ -1477,7 +1476,6 @@ async def adm_user_detail_cb(callback: CallbackQuery):
     kb.button(text="◀️ К списку", callback_data="adm_users_0")
     kb.adjust(1)
     await safe_edit(callback, text, markup=kb.as_markup())
-    await callback.answer()
 
 @dp.callback_query(F.data.startswith("adm_ban_"))
 async def adm_ban_cb(callback: CallbackQuery):
@@ -1487,8 +1485,7 @@ async def adm_ban_cb(callback: CallbackQuery):
         await db.execute("UPDATE users SET is_banned=1 WHERE user_id=?", (uid,))
         await db.commit()
     await callback.answer("⛔ Пользователь заблокирован", show_alert=True)
-    callback.data = f"adm_u_{uid}"
-    await adm_user_detail_cb(callback)
+    await _refresh_user_card(callback, uid)
 
 @dp.callback_query(F.data.startswith("adm_unban_"))
 async def adm_unban_cb(callback: CallbackQuery):
@@ -1498,8 +1495,7 @@ async def adm_unban_cb(callback: CallbackQuery):
         await db.execute("UPDATE users SET is_banned=0 WHERE user_id=?", (uid,))
         await db.commit()
     await callback.answer("✅ Пользователь разбанен", show_alert=True)
-    callback.data = f"adm_u_{uid}"
-    await adm_user_detail_cb(callback)
+    await _refresh_user_card(callback, uid)
 
 @dp.callback_query(F.data.startswith("adm_revoke_"))
 async def adm_revoke_cb(callback: CallbackQuery):
@@ -1509,8 +1505,7 @@ async def adm_revoke_cb(callback: CallbackQuery):
         await db.execute("DELETE FROM subscriptions WHERE user_id=?", (uid,))
         await db.commit()
     await callback.answer("❌ Подписка отозвана", show_alert=True)
-    callback.data = f"adm_u_{uid}"
-    await adm_user_detail_cb(callback)
+    await _refresh_user_card(callback, uid)
 
 @dp.callback_query(F.data.startswith("adm_add30_"))
 async def adm_add30_cb(callback: CallbackQuery):
@@ -1518,8 +1513,7 @@ async def adm_add30_cb(callback: CallbackQuery):
     uid = int(callback.data.split("_")[2])
     expiry = await grant_subscription(uid, 30)
     await callback.answer(f"💎 +30 дней до {expiry.strftime('%d.%m.%Y')}", show_alert=True)
-    callback.data = f"adm_u_{uid}"
-    await adm_user_detail_cb(callback)
+    await _refresh_user_card(callback, uid)
 
 @dp.callback_query(F.data.startswith("adm_rlimit_"))
 async def adm_rlimit_cb(callback: CallbackQuery):
@@ -1529,8 +1523,7 @@ async def adm_rlimit_cb(callback: CallbackQuery):
         await db.execute("UPDATE users SET request_count=0 WHERE user_id=?", (uid,))
         await db.commit()
     await callback.answer("🔄 Лимит сброшен", show_alert=True)
-    callback.data = f"adm_u_{uid}"
-    await adm_user_detail_cb(callback)
+    await _refresh_user_card(callback, uid)
 
 @dp.callback_query(F.data == "adm_main")
 async def adm_main_cb(callback: CallbackQuery):
@@ -1628,6 +1621,20 @@ async def adm_msg_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "adm_promos")
 async def adm_promos_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
+    await _show_promos(callback)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("adm_delpromo_"))
+async def adm_delpromo_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    code = callback.data[len("adm_delpromo_"):]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM promo_codes WHERE code=?", (code,))
+        await db.commit()
+    await callback.answer(f"🗑 Промокод {code} удалён", show_alert=True)
+    await _show_promos(callback)
+
+async def _show_promos(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT code, days, used_count, max_uses FROM promo_codes ORDER BY created_at DESC LIMIT 20") as c:
             promos = await c.fetchall()
@@ -1641,20 +1648,8 @@ async def adm_promos_cb(callback: CallbackQuery):
     for code, days, used, max_uses in (promos or []):
         kb.button(text=f"❌ {code}", callback_data=f"adm_delpromo_{code}")
     kb.button(text="🏠 Меню", callback_data="adm_main")
-    kb.adjust(*([1]*len(promos)), 1) if promos else kb.adjust(1)
+    kb.adjust(*([1] * len(promos)), 1) if promos else kb.adjust(1)
     await safe_edit(callback, text, markup=kb.as_markup())
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("adm_delpromo_"))
-async def adm_delpromo_cb(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID: return
-    code = callback.data[len("adm_delpromo_"):]
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM promo_codes WHERE code=?", (code,))
-        await db.commit()
-    await callback.answer(f"🗑 Промокод {code} удалён", show_alert=True)
-    callback.data = "adm_promos"
-    await adm_promos_cb(callback)
 
 @dp.message(Command("grant"))
 async def cmd_grant(message: Message):
@@ -2467,7 +2462,34 @@ async def successful_payment_handler(message: Message):
                   else f"{amount} ⭐ Stars")
     uname = f"@{message.from_user.username}" if message.from_user.username else f"id:{uid}"
 
-    if payload == "gift_30d_stars":
+    # gift_uid_{recipient_uid}_{method} — подарок конкретному пользователю
+    if payload.startswith("gift_uid_"):
+        parts = payload.split("_")
+        recipient_uid = int(parts[2])
+        method_name = parts[3] if len(parts) > 3 else "stars"
+        expiry = await grant_subscription(recipient_uid, 30)
+        # notify buyer
+        await message.answer(
+            f"🎁 *Подарок отправлен!*\n\nПодписка активирована для `{recipient_uid}` до *{expiry.strftime('%d.%m.%Y')}*",
+            parse_mode="Markdown", reply_markup=main_menu(lang))
+        # notify recipient
+        try:
+            rlang = await get_user_lang(recipient_uid)
+            await bot.send_message(recipient_uid,
+                f"🎁 *Вам подарили подписку!*\n\nКто-то активировал для вас *Мистра Premium* на 30 дней.\nПодписка действует до: *{expiry.strftime('%d.%m.%Y')}* ✨",
+                parse_mode="Markdown")
+        except Exception:
+            pass
+        if ADMIN_ID:
+            method_label = {"stars": "⭐ Stars", "rub": "💳 ЮКасса", "crypto": "💎 Crypto"}.get(method_name, method_name)
+            await bot.send_message(ADMIN_ID,
+                f"🎁 *Подарочная подписка!*\n"
+                f"👤 От: {uname} (`{uid}`)\n"
+                f"🎯 Кому: `{recipient_uid}`\n"
+                f"💳 Способ: {method_label} | 💵 {amount_str}\n"
+                f"📅 До: {expiry.strftime('%d.%m.%Y')}",
+                parse_mode="Markdown")
+    elif payload == "gift_30d_stars":
         import secrets
         code = "GIFT" + secrets.token_hex(4).upper()
         async with aiosqlite.connect(DB_PATH) as db:
@@ -2602,10 +2624,96 @@ async def tarot_library_cb(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "gift_sub")
 async def gift_sub_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
-    await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
-                           description=t(lang,'invoice_desc'), payload="gift_30d_stars",
-                           currency="XTR", prices=[LabeledPrice(label="Gift Subscription", amount=SUBSCRIPTION_STARS)])
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    user_states[uid] = {"action": "gift_select_user"}
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang, 'btn_back'), callback_data="account_menu")
+    text = ("🎁 *Подарить подписку*\n\n"
+            "Введите Telegram ID или @username получателя:"
+            if lang == 'ru' else
+            "🎁 *Gift Subscription*\n\n"
+            "Enter recipient's Telegram ID or @username:")
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("gift_pay_"))
+async def gift_pay_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    recipient_uid = int(callback.data.split("_")[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT username FROM users WHERE user_id=?", (recipient_uid,)) as c:
+            row = await c.fetchone()
+    rname = f"@{row[0]}" if row and row[0] and row[0] != "unknown" else f"id:{recipient_uid}"
+    text = (f"🎁 *Подарить подписку*\n\nПолучатель: *{rname}*\n\nВыберите способ оплаты (30 дней):"
+            if lang == 'ru' else
+            f"🎁 *Gift Subscription*\n\nRecipient: *{rname}*\n\nChoose payment method (30 days):")
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"⭐ {SUBSCRIPTION_STARS} Stars", callback_data=f"gift_stars_{recipient_uid}")
+    if YUKASSA_TOKEN:
+        kb.button(text="💳 ЮКасса — 250 ₽", callback_data=f"gift_rub_{recipient_uid}")
+    if CRYPTOBOT_TOKEN:
+        kb.button(text="💎 Crypto — $4.99", callback_data=f"gift_crypto_{recipient_uid}")
+    kb.button(text=t(lang, 'btn_back'), callback_data="gift_sub")
+    kb.adjust(1)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("gift_stars_"))
+async def gift_stars_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    recipient_uid = int(callback.data.split("_")[2])
+    await bot.send_invoice(
+        chat_id=uid, title="🎁 Подарок — Подписка Мистра 30 дней",
+        description=f"Подписка в подарок пользователю {recipient_uid}",
+        payload=f"gift_uid_{recipient_uid}_stars",
+        currency="XTR",
+        prices=[LabeledPrice(label="Gift Subscription", amount=SUBSCRIPTION_STARS)])
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("gift_rub_"))
+async def gift_rub_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    recipient_uid = int(callback.data.split("_")[2])
+    if not YUKASSA_TOKEN:
+        await callback.answer("❌ ЮКасса не подключена", show_alert=True)
+        return
+    await bot.send_invoice(
+        chat_id=uid, title="🎁 Подарок — Подписка Мистра 30 дней",
+        description=f"Подписка в подарок на 30 дней",
+        payload=f"gift_uid_{recipient_uid}_rub",
+        provider_token=YUKASSA_TOKEN, currency="RUB",
+        prices=[LabeledPrice(label="Подписка 30 дней", amount=SUBSCRIPTION_RUB)])
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("gift_crypto_"))
+async def gift_crypto_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    recipient_uid = int(callback.data.split("_")[2])
+    if not CRYPTOBOT_TOKEN:
+        await callback.answer("❌ CryptoBot не подключён", show_alert=True)
+        return
+    invoice = await create_cryptobot_invoice(uid, description=f"Gift for {recipient_uid}")
+    if not invoice or "pay_url" not in invoice:
+        await callback.answer("❌ Ошибка создания платежа", show_alert=True)
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO crypto_invoices (invoice_id, user_id) VALUES (?,?)",
+            (invoice["invoice_id"], uid))
+        await db.execute(
+            "INSERT OR IGNORE INTO payments (payment_id, user_id, method, amount, currency) VALUES (?,?,?,?,?)",
+            (str(invoice["invoice_id"]), uid, f"crypto_gift_{recipient_uid}", SUBSCRIPTION_USDT, "USDT"))
+        await db.commit()
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💎 Оплатить криптой", url=invoice["pay_url"])
+    kb.button(text=t(lang, 'btn_back'), callback_data=f"gift_pay_{recipient_uid}")
+    kb.adjust(1)
+    await safe_edit(callback, f"💎 *Оплата криптой — подарок*\n\nСумма: *{SUBSCRIPTION_USDT} USDT*\n\nПосле оплаты подписка автоматически активируется получателю.", markup=kb.as_markup())
     await callback.answer()
 
 async def get_last_yukassa_payment(user_id: int):
@@ -2625,7 +2733,9 @@ async def refund_request_cb(callback: CallbackQuery):
         return
     payment_id = await get_last_yukassa_payment(uid)
     if not payment_id:
-        await safe_edit(callback, t(lang, 'refund_no_payment', support=SUPPORT_USERNAME))
+        kb = InlineKeyboardBuilder()
+        kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
+        await safe_edit(callback, t(lang, 'refund_no_payment', support=SUPPORT_USERNAME), markup=kb.as_markup())
         await callback.answer()
         return
     kb = InlineKeyboardBuilder()
@@ -2641,7 +2751,9 @@ async def refund_confirm_cb(callback: CallbackQuery):
     lang = await get_user_lang(uid)
     payment_id = callback.data[len("refund_confirm_"):]
     if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
-        await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME))
+        kb = InlineKeyboardBuilder()
+        kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
+        await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME), markup=kb.as_markup())
         await callback.answer()
         return
     auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
@@ -2660,7 +2772,9 @@ async def refund_confirm_cb(callback: CallbackQuery):
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute("DELETE FROM subscriptions WHERE user_id=?", (uid,))
                 await db.commit()
-            await safe_edit(callback, t(lang, 'refund_success'))
+            kb_ok = InlineKeyboardBuilder()
+            kb_ok.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
+            await safe_edit(callback, t(lang, 'refund_success'), markup=kb_ok.as_markup())
             if ADMIN_ID:
                 uname = f"@{callback.from_user.username}" if callback.from_user.username else f"id:{uid}"
                 await bot.send_message(ADMIN_ID,
@@ -2671,10 +2785,14 @@ async def refund_confirm_cb(callback: CallbackQuery):
                     parse_mode="Markdown")
         else:
             logger.error(f"YuKassa refund failed for {uid}: {data}")
-            await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME))
+            kb_err = InlineKeyboardBuilder()
+            kb_err.button(text=t(lang, 'btn_back'), callback_data="subscription")
+            await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME), markup=kb_err.as_markup())
     except Exception as e:
         logger.error(f"YuKassa refund error for {uid}: {e}")
-        await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME))
+        kb_err = InlineKeyboardBuilder()
+        kb_err.button(text=t(lang, 'btn_back'), callback_data="subscription")
+        await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME), markup=kb_err.as_markup())
     await callback.answer()
 
 # ─── MESSAGE HANDLER ──────────────────────────────────────────────────────────
@@ -2698,6 +2816,73 @@ async def handle_message(message: Message):
         pass
 
     text = message.text or ""
+
+    # ── Gift subscription: select recipient ──────────────────────────────────
+    if action == "gift_select_user":
+        query = text.strip().lstrip("@")
+        async with aiosqlite.connect(DB_PATH) as db:
+            if query.isdigit():
+                async with db.execute("SELECT user_id, username FROM users WHERE user_id=?", (int(query),)) as c:
+                    row = await c.fetchone()
+            else:
+                async with db.execute("SELECT user_id, username FROM users WHERE username=?", (query,)) as c:
+                    row = await c.fetchone()
+        if not row:
+            kb = InlineKeyboardBuilder()
+            kb.button(text="🔄 Попробовать снова", callback_data="gift_sub")
+            kb.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
+            kb.adjust(1)
+            await bot.send_message(chat_id, "❌ Пользователь не найден. Убедитесь, что он уже запускал бота.", reply_markup=kb.as_markup())
+        else:
+            recipient_uid, rname = row
+            rname_str = f"@{rname}" if rname and rname != "unknown" else f"id:{recipient_uid}"
+            kb = InlineKeyboardBuilder()
+            kb.button(text=f"✅ Да, выбрать {rname_str}", callback_data=f"gift_pay_{recipient_uid}")
+            kb.button(text="🔄 Другой пользователь", callback_data="gift_sub")
+            kb.adjust(1)
+            await bot.send_message(chat_id, f"🎁 Получатель: *{rname_str}*\n\nПодтвердить?", parse_mode="Markdown", reply_markup=kb.as_markup())
+        return
+
+    # ── Admin: search user ────────────────────────────────────────────────────
+    if action == "adm_search":
+        query = text.strip().lstrip("@")
+        async with aiosqlite.connect(DB_PATH) as db:
+            if query.isdigit():
+                async with db.execute(
+                    "SELECT user_id FROM users WHERE user_id=?", (int(query),)) as c:
+                    row = await c.fetchone()
+            else:
+                async with db.execute(
+                    "SELECT user_id FROM users WHERE username=?", (query,)) as c:
+                    row = await c.fetchone()
+        if row:
+            found_uid = row[0]
+            kb = InlineKeyboardBuilder()
+            kb.button(text="👤 Открыть профиль", callback_data=f"adm_u_{found_uid}")
+            kb.button(text="🏠 Меню", callback_data="adm_main")
+            kb.adjust(1)
+            await bot.send_message(chat_id, f"✅ Найден: `{found_uid}`", parse_mode="Markdown", reply_markup=kb.as_markup())
+        else:
+            kb = InlineKeyboardBuilder()
+            kb.button(text="🏠 Меню", callback_data="adm_main")
+            await bot.send_message(chat_id, f"❌ Пользователь `{query}` не найден.", parse_mode="Markdown", reply_markup=kb.as_markup())
+        return
+
+    # ── Admin: send message to user ───────────────────────────────────────────
+    if action == "adm_msg":
+        target_uid = state.get("target_uid")
+        try:
+            await bot.send_message(target_uid,
+                f"📨 *Сообщение от администратора:*\n\n{text}",
+                parse_mode="Markdown")
+            kb = InlineKeyboardBuilder()
+            kb.button(text="👤 Назад к юзеру", callback_data=f"adm_u_{target_uid}")
+            kb.button(text="🏠 Меню", callback_data="adm_main")
+            kb.adjust(2)
+            await bot.send_message(chat_id, f"✅ Сообщение отправлено `{target_uid}`", parse_mode="Markdown", reply_markup=kb.as_markup())
+        except Exception:
+            await bot.send_message(chat_id, f"❌ Не удалось отправить сообщение `{target_uid}` — возможно, пользователь заблокировал бота.")
+        return
 
     # ── Palmistry (photo reading) ─────────────────────────────────────────────
     if action == "palmistry":
