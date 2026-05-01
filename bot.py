@@ -941,12 +941,25 @@ def subscription_keyboard(has_sub: bool, lang: str = 'ru'):
     return kb.as_markup()
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
+async def safe_edit(callback: CallbackQuery, text: str, markup=None, parse_mode: str = "Markdown"):
+    """Edit message text regardless of whether the message is a photo or text."""
+    try:
+        if callback.message.photo:
+            await callback.message.delete()
+            await bot.send_message(callback.message.chat.id, text,
+                                   parse_mode=parse_mode, reply_markup=markup)
+        else:
+            await callback.message.edit_text(text, parse_mode=parse_mode, reply_markup=markup)
+    except Exception:
+        await bot.send_message(callback.message.chat.id, text,
+                               parse_mode=parse_mode, reply_markup=markup)
+
 async def _set_input_state(callback: CallbackQuery, action: str, prompt_key: str, lang: str):
     user_states[callback.from_user.id] = {
         "action": action, "prompt_msg_id": callback.message.message_id,
         "chat_id": callback.message.chat.id,
     }
-    await callback.message.edit_text(t(lang, prompt_key), parse_mode="Markdown", reply_markup=cancel_keyboard(lang))
+    await safe_edit(callback, t(lang, prompt_key), cancel_keyboard(lang))
     await callback.answer()
 
 async def _edit_or_send(chat_id: int, msg_id, text: str, markup):
@@ -1550,44 +1563,44 @@ async def lang_selected(callback: CallbackQuery):
         await callback.answer()
         return
     await set_user_lang(callback.from_user.id, lang, callback.from_user.username)
-    await callback.message.edit_text(t(lang,'welcome'), parse_mode="Markdown", reply_markup=main_menu(lang))
+    await safe_edit(callback, t(lang,'welcome'), main_menu(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "change_language")
 async def change_language_cb(callback: CallbackQuery):
-    await callback.message.edit_text(TEXTS['ru']['choose_lang'], reply_markup=language_keyboard())
+    await safe_edit(callback, TEXTS['ru']['choose_lang'], language_keyboard())
     await callback.answer()
 
 # ─── CALLBACK: NAVIGATION ─────────────────────────────────────────────────────
 @dp.callback_query(F.data == "back_main")
 async def back_main(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'main_menu_title'), parse_mode="Markdown", reply_markup=main_menu(lang))
+    await safe_edit(callback, t(lang,'main_menu_title'), main_menu(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "cancel_input")
 async def cancel_input_cb(callback: CallbackQuery):
     user_states.pop(callback.from_user.id, None)
     lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'main_menu_title'), parse_mode="Markdown", reply_markup=main_menu(lang))
+    await safe_edit(callback, t(lang,'main_menu_title'), main_menu(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "readings_menu")
 async def readings_menu_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'readings_menu_title'), parse_mode="Markdown", reply_markup=readings_submenu_kb(lang))
+    await safe_edit(callback, t(lang,'readings_menu_title'), readings_submenu_kb(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "esoterics_menu")
 async def esoterics_menu_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'esoterics_menu_title'), parse_mode="Markdown", reply_markup=esoterics_submenu_kb(lang))
+    await safe_edit(callback, t(lang,'esoterics_menu_title'), esoterics_submenu_kb(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "account_menu")
 async def account_menu_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
-    await callback.message.edit_text(t(lang,'account_menu_title'), parse_mode="Markdown", reply_markup=account_submenu_kb(lang))
+    await safe_edit(callback, t(lang,'account_menu_title'), account_submenu_kb(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "tarot_menu")
@@ -1839,9 +1852,9 @@ async def card_of_day_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await safe_edit(callback, t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), paywall_keyboard(lang))
         await callback.answer(); return
-    await callback.message.edit_text(t(lang,'pulling_card'), parse_mode="Markdown")
+    await safe_edit(callback, t(lang,'pulling_card'), None)
     today = datetime.now().strftime("%d.%m.%Y")
     today_seed = datetime.now().strftime("%Y-%m-%d")
     card = random.Random(hash(f"{uid}:{today_seed}")).choice(TAROT_CARDS)
