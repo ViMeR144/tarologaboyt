@@ -3,6 +3,7 @@ import base64
 import logging
 import os
 import random
+import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -21,6 +22,13 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 YUKASSA_TOKEN = os.getenv("YUKASSA_TOKEN", "")
+YUKASSA_SHOP_ID = os.getenv("YUKASSA_SHOP_ID", "")
+YUKASSA_SECRET_KEY = os.getenv("YUKASSA_SECRET_KEY", "")
+# fallback: parse from provider token if direct vars not set
+if not YUKASSA_SHOP_ID and YUKASSA_TOKEN and YUKASSA_TOKEN.count(":") >= 2:
+    _yp = YUKASSA_TOKEN.split(":", 2)
+    YUKASSA_SHOP_ID = _yp[0]
+    YUKASSA_SECRET_KEY = _yp[2]
 STRIPE_TOKEN = os.getenv("STRIPE_TOKEN", "")
 CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN", "")
 CRYPTOBOT_API = "https://pay.crypt.bot/api"
@@ -152,9 +160,13 @@ TEXTS = {
         'btn_notif_on': "🔔 Включить", 'btn_notif_off': "🔕 Отключить",
         'notif_desc': "Каждое утро в *8:00* Мистра присылает карту дня.\nПодписчики получают развёрнутую интерпретацию.",
         'paywall': "🔒 *Лимит бесплатных запросов исчерпан*\n\nВы использовали все {free} бесплатных запросов.\n\n*Подписка на 30 дней — {stars} ⭐*\n• Безлимитные расклады Таро и Нумерология\n• Гороскоп, Луна, Ритуалы, Карта недели\n• Любовные расклады и многое другое",
-        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Карта / СБП — 250 ₽",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 ЮКасса (карта/ЮMoney) — 250 ₽",
+        'btn_buy_sbp': "📱 СБП — 250 ₽",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
         'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
+        'sbp_payment_msg': "📱 *Оплата через СБП*\n\nНажмите кнопку ниже — откроется страница ЮКассы для оплаты через приложение вашего банка.\n\n✅ Подписка активируется автоматически в течение ~30 секунд после оплаты.",
+        'sbp_btn_pay': "📱 Открыть форму оплаты СБП",
+        'sbp_error': "❌ Ошибка создания платежа. Попробуйте позже или выберите другой способ оплаты.",
         'sub_active': "💎 *Ваша подписка*\n\n✅ Активна до: *{date}*\n📊 Запросов: *{count}*\n🔥 Серия: *{streak} дней*\n\nНаслаждайтесь безлимитным доступом! 🔮",
         'sub_inactive': "💎 *Подписка на Мистру*\n\n🆓 Бесплатных осталось: *{remaining}/{free}*\n🔥 Серия: *{streak} дней*\n\n*Подписка включает:*\n• Таро, Нумерология, Натальная карта\n• Гороскоп, Луна, Ритуалы, Руны\n• Любовные расклады\n• Ежедневная рассылка в 8:00\n\n💰 *{stars} Telegram Stars* / 30 дней",
         'sub_activated': "✅ *Подписка активирована!*\n\n🔮 Добро пожаловать в безграничный мир Мистры!\n📅 Действует до: *{date}*\n\nДелайте неограниченные расклады! 🌟",
@@ -295,9 +307,13 @@ TEXTS = {
         'btn_notif_on': "🔔 Enable", 'btn_notif_off': "🔕 Disable",
         'notif_desc': "Every morning at *8:00* Mystra sends you the card of the day.\nSubscribers get a detailed interpretation.",
         'paywall': "🔒 *Free request limit reached*\n\nYou've used all {free} free requests.\n\n*30-day Subscription — {stars} ⭐*\n• Unlimited Tarot spreads & Numerology\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads and much more",
-        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 Card / SBP — 250 ₽",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 YuKassa (card/YuMoney) — 250 ₽",
+        'btn_buy_sbp': "📱 SBP (Fast Pay) — 250 ₽",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
         'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
+        'sbp_payment_msg': "📱 *Pay via SBP*\n\nClick the button below — you will be redirected to YuKassa's payment page to pay through your banking app.\n\n✅ Subscription activates automatically within ~30 seconds after payment.",
+        'sbp_btn_pay': "📱 Open SBP Payment Form",
+        'sbp_error': "❌ Payment creation failed. Please try later or choose a different payment method.",
         'sub_active': "💎 *Your Subscription*\n\n✅ Active until: *{date}*\n📊 Requests: *{count}*\n🔥 Streak: *{streak} days*\n\nEnjoy unlimited access! 🔮",
         'sub_inactive': "💎 *Mystra Subscription*\n\n🆓 Free requests left: *{remaining}/{free}*\n🔥 Streak: *{streak} days*\n\n*Subscription includes:*\n• Tarot, Numerology, Natal Chart, Runes\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads\n• Daily broadcast at 8:00\n\n💰 *{stars} Telegram Stars* / 30 days",
         'sub_activated': "✅ *Subscription activated!*\n\n🔮 Welcome to Mystra's limitless realm!\n📅 Active until: *{date}*\n\nEnjoy unlimited spreads! 🌟",
@@ -410,6 +426,9 @@ async def init_db():
             created_at TEXT DEFAULT (datetime('now')))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS crypto_invoices (
             invoice_id INTEGER PRIMARY KEY, user_id INTEGER,
+            created_at TEXT DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS yookassa_invoices (
+            payment_id TEXT PRIMARY KEY, user_id INTEGER,
             created_at TEXT DEFAULT (datetime('now')))""")
         for col in ["notifications INTEGER DEFAULT 1","language TEXT DEFAULT NULL",
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
@@ -918,6 +937,8 @@ def career_menu_kb(lang: str = 'ru'):
 def paywall_keyboard(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
+    if YUKASSA_SHOP_ID:
+        kb.button(text=t(lang,'btn_buy_sbp'), callback_data="buy_sbp")
     kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
     if STRIPE_TOKEN:
         kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
@@ -931,6 +952,8 @@ def subscription_keyboard(has_sub: bool, lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     if not has_sub:
         kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
+        if YUKASSA_SHOP_ID:
+            kb.button(text=t(lang,'btn_buy_sbp'), callback_data="buy_sbp")
         kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
         if STRIPE_TOKEN:
             kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
@@ -1079,6 +1102,71 @@ async def cryptobot_create_invoice(user_id: int) -> dict | None:
     except Exception as e:
         logger.error(f"CryptoBot create invoice error: {e}")
         return None
+
+async def create_yukassa_sbp_payment(uid: int) -> dict | None:
+    if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
+        return None
+    auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
+    headers = {"Idempotency-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
+    payload = {
+        "amount": {"value": "250.00", "currency": "RUB"},
+        "payment_method_data": {"type": "sbp"},
+        "confirmation": {"type": "redirect", "return_url": "https://t.me/" + (await bot.get_me()).username},
+        "capture": True,
+        "description": "Подписка Мистра на 30 дней",
+        "metadata": {"user_id": str(uid)}
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post("https://api.yookassa.ru/v3/payments",
+                                    json=payload, auth=auth, headers=headers) as resp:
+                return await resp.json()
+    except Exception as e:
+        logger.error(f"YuKassa SBP create error: {e}")
+        return None
+
+async def check_yukassa_payments():
+    while True:
+        await asyncio.sleep(30)
+        if not YUKASSA_SHOP_ID:
+            continue
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                cur = await db.execute("SELECT payment_id, user_id FROM yookassa_invoices")
+                pending = await cur.fetchall()
+                await db.execute("DELETE FROM yookassa_invoices WHERE created_at < datetime('now', '-2 hours')")
+                await db.commit()
+            if not pending:
+                continue
+            auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
+            async with aiohttp.ClientSession() as session:
+                for payment_id, user_id in pending:
+                    try:
+                        async with session.get(
+                            f"https://api.yookassa.ru/v3/payments/{payment_id}", auth=auth
+                        ) as resp:
+                            data = await resp.json()
+                        if data.get("status") == "succeeded":
+                            lang = await get_user_lang(user_id)
+                            expiry = await grant_subscription(user_id, 30)
+                            await bot.send_message(user_id,
+                                t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
+                                parse_mode="Markdown", reply_markup=main_menu(lang))
+                            async with aiosqlite.connect(DB_PATH) as db:
+                                await db.execute("DELETE FROM yookassa_invoices WHERE payment_id=?", (payment_id,))
+                                await db.commit()
+                            if ADMIN_ID:
+                                await bot.send_message(ADMIN_ID,
+                                    f"💰 *Новая оплата!*\n"
+                                    f"👤 id:{user_id}\n"
+                                    f"💳 Способ: 📱 СБП (YuKassa API)\n"
+                                    f"💵 Сумма: 250 RUB\n"
+                                    f"📅 Подписка до: {expiry.strftime('%d.%m.%Y')}",
+                                    parse_mode="Markdown")
+                    except Exception as e:
+                        logger.error(f"YuKassa check payment {payment_id} error: {e}")
+        except Exception as e:
+            logger.error(f"check_yukassa_payments error: {e}")
 
 async def check_crypto_payments():
     while True:
@@ -2014,6 +2102,31 @@ async def buy_rub_cb(callback: CallbackQuery):
                            prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_RUB)])
     await callback.answer()
 
+@dp.callback_query(F.data == "buy_sbp")
+async def buy_sbp_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    if not YUKASSA_SHOP_ID:
+        await callback.answer("⏳ СБП пока недоступен!", show_alert=True); return
+    await callback.answer()
+    payment = await create_yukassa_sbp_payment(uid)
+    if not payment or "id" not in payment:
+        await callback.message.answer(t(lang, 'sbp_error'), parse_mode="Markdown"); return
+    payment_id = payment["id"]
+    confirm_url = payment.get("confirmation", {}).get("confirmation_url", "")
+    if not confirm_url:
+        await callback.message.answer(t(lang, 'sbp_error'), parse_mode="Markdown"); return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR IGNORE INTO yookassa_invoices (payment_id, user_id) VALUES (?,?)",
+                         (payment_id, uid))
+        await db.commit()
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang, 'sbp_btn_pay'), url=confirm_url)
+    kb.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
+    kb.adjust(1)
+    await callback.message.answer(t(lang, 'sbp_payment_msg'),
+                                  parse_mode="Markdown", reply_markup=kb.as_markup())
+
 @dp.callback_query(F.data == "buy_crypto")
 async def buy_crypto_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
@@ -2055,8 +2168,17 @@ async def pre_checkout_handler(pcq: PreCheckoutQuery):
 
 @dp.message(F.successful_payment)
 async def successful_payment_handler(message: Message):
-    lang = await get_user_lang(message.from_user.id)
-    payload = message.successful_payment.invoice_payload
+    uid = message.from_user.id
+    lang = await get_user_lang(uid)
+    payment = message.successful_payment
+    payload = payment.invoice_payload
+    amount = payment.total_amount
+    currency = payment.currency
+
+    amount_str = (f"{amount // 100} {currency}" if currency != "XTR"
+                  else f"{amount} ⭐ Stars")
+    uname = f"@{message.from_user.username}" if message.from_user.username else f"id:{uid}"
+
     if payload == "gift_30d_stars":
         import secrets
         code = "GIFT" + secrets.token_hex(4).upper()
@@ -2064,9 +2186,25 @@ async def successful_payment_handler(message: Message):
             await db.execute("INSERT OR IGNORE INTO promo_codes (code,days,max_uses) VALUES (?,30,1)", (code,))
             await db.commit()
         await message.answer(t(lang,'gift_sub_created',code=code), parse_mode="Markdown", reply_markup=main_menu(lang))
+        if ADMIN_ID:
+            await bot.send_message(ADMIN_ID,
+                f"🎁 *Подарочная подписка куплена*\n"
+                f"👤 {uname}\n💰 {amount_str}\n🎟 Код: `{code}`",
+                parse_mode="Markdown")
     else:
-        expiry = await grant_subscription(message.from_user.id, 30)
-        await message.answer(t(lang,'sub_activated',date=expiry.strftime('%d.%m.%Y')), parse_mode="Markdown", reply_markup=main_menu(lang))
+        expiry = await grant_subscription(uid, 30)
+        await message.answer(t(lang,'sub_activated',date=expiry.strftime('%d.%m.%Y')),
+                             parse_mode="Markdown", reply_markup=main_menu(lang))
+        if ADMIN_ID:
+            method = {"sub_30d_rub": "💳 ЮКасса", "sub_30d_stars": "⭐ Stars",
+                      "sub_30d_card": "💳 Stripe", "sub_30d_crypto": "💎 Crypto"}.get(payload, payload)
+            await bot.send_message(ADMIN_ID,
+                f"💰 *Новая оплата!*\n"
+                f"👤 {uname} (`{uid}`)\n"
+                f"💳 Способ: {method}\n"
+                f"💵 Сумма: {amount_str}\n"
+                f"📅 Подписка до: {expiry.strftime('%d.%m.%Y')}",
+                parse_mode="Markdown")
 
 # ─── CALLBACKS: NEW FEATURES ──────────────────────────────────────────────────
 @dp.callback_query(F.data == "tarot_cc")
@@ -2437,6 +2575,7 @@ async def main():
     asyncio.create_task(moon_notification_loop())
     asyncio.create_task(inactive_reminder_loop())
     asyncio.create_task(check_crypto_payments())
+    asyncio.create_task(check_yukassa_payments())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
