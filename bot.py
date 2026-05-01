@@ -24,13 +24,14 @@ YUKASSA_TOKEN = os.getenv("YUKASSA_TOKEN", "")
 STRIPE_TOKEN = os.getenv("STRIPE_TOKEN", "")
 CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN", "")
 CRYPTOBOT_API = "https://pay.crypt.bot/api"
+WELCOME_PHOTO = os.getenv("WELCOME_PHOTO", "")
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "support")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 
-SUBSCRIPTION_STARS = 200
-SUBSCRIPTION_RUB = 29900
-SUBSCRIPTION_USD = 499  # cents ($4.99)
-SUBSCRIPTION_USDT = "4.99"
+SUBSCRIPTION_STARS = 100
+SUBSCRIPTION_RUB = 19900
+SUBSCRIPTION_USD = 300  # cents ($4.99)
+SUBSCRIPTION_USDT = "3.00"
 FREE_REQUESTS = 5
 DB_PATH = os.getenv("DB_PATH", "tarot_bot.db")
 MOSCOW_TZ = timezone(timedelta(hours=3))
@@ -161,10 +162,17 @@ TEXTS = {
         'promo_success': "✅ *Промокод активирован!*\n\nПодписка продлена на *{days} дней*. 🎉",
         'promo_invalid': "❌ Промокод не найден.", 'promo_used': "❌ Вы уже использовали этот промокод.",
         'promo_exhausted': "❌ Промокод больше не действует.",
-        'profile_title': "👤 *Ваш профиль*\n\n📅 Дата рождения: *{birth}*\n✏️ Имя: *{name}*\n♈ Знак зодиака: *{zodiac}*\n🔥 Серия: *{streak} дней*\n🎁 Бонусных запросов: *+{bonus}*",
+        'profile_title': "👤 *Ваш профиль*\n\n✏️ Имя: *{name}*\n📅 Дата рождения: *{birth}*\n♈ Знак зодиака: *{zodiac}*\n⚧ Пол: *{gender}*\n🌆 Город: *{city}*\n🕐 Часовой пояс: *{timezone}*\n🔥 Серия: *{streak} дней*\n🎁 Бонусных запросов: *+{bonus}*",
         'profile_saved': "✅ Сохранено!", 'profile_empty': "не указано",
-        'btn_set_birthdate': "📅 Указать дату рождения", 'btn_set_name': "✏️ Указать имя",
-        'btn_set_zodiac': "♈ Указать знак зодиака", 'btn_clear_profile': "🗑 Очистить профиль",
+        'btn_set_birthdate': "📅 Дата рождения", 'btn_set_name': "✏️ Имя",
+        'btn_set_zodiac': "♈ Знак зодиака", 'btn_set_gender': "⚧ Пол",
+        'btn_set_city': "🌆 Город", 'btn_set_timezone': "🕐 Часовой пояс",
+        'btn_clear_profile': "🗑 Очистить профиль",
+        'set_gender_prompt': "⚧ *Укажите ваш пол:*",
+        'btn_gender_m': "👨 Мужской", 'btn_gender_f': "👩 Женский", 'btn_gender_o': "🌈 Другой",
+        'set_city_prompt': "🌆 *Введите ваш город:*\n\nНапример: _Киев_, _Москва_, _Варшава_",
+        'set_timezone_prompt': "🕐 *Введите ваш часовой пояс:*\n\nНапример: _UTC+2_, _UTC+3_, _UTC+0_",
+        'history_item_btn': "🔸 {title} | {date}",
         'streak_bonus': "🔥 *{days}-дневная серия!*\n\nЗа верность Мистре — *+1 бесплатный запрос* в подарок! 🎁",
         'banned_msg': "⛔ Ваш аккаунт заблокирован. Обратитесь в техническую поддержку.",
         'days': ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
@@ -294,10 +302,17 @@ TEXTS = {
         'promo_success': "✅ *Promo code activated!*\n\nSubscription extended by *{days} days*. 🎉",
         'promo_invalid': "❌ Promo code not found.", 'promo_used': "❌ You have already used this promo code.",
         'promo_exhausted': "❌ This promo code is no longer valid.",
-        'profile_title': "👤 *Your Profile*\n\n📅 Birth date: *{birth}*\n✏️ Name: *{name}*\n♈ Zodiac: *{zodiac}*\n🔥 Streak: *{streak} days*\n🎁 Bonus requests: *+{bonus}*",
+        'profile_title': "👤 *Your Profile*\n\n✏️ Name: *{name}*\n📅 Birth date: *{birth}*\n♈ Zodiac: *{zodiac}*\n⚧ Gender: *{gender}*\n🌆 City: *{city}*\n🕐 Timezone: *{timezone}*\n🔥 Streak: *{streak} days*\n🎁 Bonus requests: *+{bonus}*",
         'profile_saved': "✅ Saved!", 'profile_empty': "not set",
-        'btn_set_birthdate': "📅 Set birth date", 'btn_set_name': "✏️ Set name",
-        'btn_set_zodiac': "♈ Set zodiac sign", 'btn_clear_profile': "🗑 Clear profile",
+        'btn_set_birthdate': "📅 Birth date", 'btn_set_name': "✏️ Name",
+        'btn_set_zodiac': "♈ Zodiac sign", 'btn_set_gender': "⚧ Gender",
+        'btn_set_city': "🌆 City", 'btn_set_timezone': "🕐 Timezone",
+        'btn_clear_profile': "🗑 Clear profile",
+        'set_gender_prompt': "⚧ *Choose your gender:*",
+        'btn_gender_m': "👨 Male", 'btn_gender_f': "👩 Female", 'btn_gender_o': "🌈 Other",
+        'set_city_prompt': "🌆 *Enter your city:*\n\nExample: _Kyiv_, _Warsaw_, _London_",
+        'set_timezone_prompt': "🕐 *Enter your timezone:*\n\nExample: _UTC+2_, _UTC+3_, _UTC+0_",
+        'history_item_btn': "🔸 {title} | {date}",
         'streak_bonus': "🔥 *{days}-day streak!*\n\nFor your loyalty to Mystra — *+1 free request* as a gift! 🎁",
         'banned_msg': "⛔ Your account has been banned. Contact technical support.",
         'days': ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
@@ -384,7 +399,8 @@ async def init_db():
             code TEXT, user_id INTEGER, PRIMARY KEY (code, user_id))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS readings_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
-            action TEXT, header TEXT, created_at TEXT DEFAULT (datetime('now')))""")
+            action TEXT, header TEXT, result TEXT,
+            created_at TEXT DEFAULT (datetime('now')))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS crypto_invoices (
             invoice_id INTEGER PRIMARY KEY, user_id INTEGER,
             created_at TEXT DEFAULT (datetime('now')))""")
@@ -392,9 +408,16 @@ async def init_db():
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
                     "birth_date TEXT DEFAULT NULL","full_name TEXT DEFAULT NULL",
                     "zodiac TEXT DEFAULT NULL","streak INTEGER DEFAULT 0",
-                    "last_active_date TEXT DEFAULT NULL","is_banned INTEGER DEFAULT 0"]:
+                    "last_active_date TEXT DEFAULT NULL","is_banned INTEGER DEFAULT 0",
+                    "gender TEXT DEFAULT NULL","city TEXT DEFAULT NULL",
+                    "timezone TEXT DEFAULT NULL","result TEXT DEFAULT NULL"]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
+            except Exception:
+                pass
+        for hist_col in ["result TEXT DEFAULT NULL"]:
+            try:
+                await db.execute(f"ALTER TABLE readings_history ADD COLUMN {hist_col}")
             except Exception:
                 pass
         await db.commit()
@@ -468,20 +491,31 @@ async def get_referral_count(user_id: int) -> int:
 
 async def get_profile(user_id: int) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT birth_date,full_name,zodiac,streak,COALESCE(bonus_requests,0) FROM users WHERE user_id=?", (user_id,)) as c:
+        async with db.execute(
+            "SELECT birth_date,full_name,zodiac,streak,COALESCE(bonus_requests,0),gender,city,timezone FROM users WHERE user_id=?",
+            (user_id,)
+        ) as c:
             row = await c.fetchone()
             if not row:
                 return {}
-            return {"birth_date": row[0], "full_name": row[1], "zodiac": row[2], "streak": row[3] or 0, "bonus": row[4]}
+            return {"birth_date": row[0], "full_name": row[1], "zodiac": row[2],
+                    "streak": row[3] or 0, "bonus": row[4],
+                    "gender": row[5], "city": row[6], "timezone": row[7]}
+
+_SAFE_PROFILE_FIELDS = {"birth_date", "full_name", "zodiac", "gender", "city", "timezone"}
 
 async def save_profile_field(user_id: int, field: str, value: str):
+    if field not in _SAFE_PROFILE_FIELDS:
+        return
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(f"UPDATE users SET {field}=? WHERE user_id=?", (value, user_id))
         await db.commit()
 
 async def clear_profile(user_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE users SET birth_date=NULL,full_name=NULL,zodiac=NULL WHERE user_id=?", (user_id,))
+        await db.execute(
+            "UPDATE users SET birth_date=NULL,full_name=NULL,zodiac=NULL,gender=NULL,city=NULL,timezone=NULL WHERE user_id=?",
+            (user_id,))
         await db.commit()
 
 async def is_banned(user_id: int) -> bool:
@@ -553,18 +587,18 @@ async def get_all_users():
         async with db.execute("SELECT user_id FROM users WHERE COALESCE(is_banned,0)=0") as c:
             return [row[0] for row in await c.fetchall()]
 
-async def save_reading_history(user_id: int, action: str, header: str):
+async def save_reading_history(user_id: int, action: str, header: str, result: str = ""):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("INSERT INTO readings_history (user_id,action,header) VALUES (?,?,?)",
-                         (user_id, action, header[:120] if header else action))
+        await db.execute("INSERT INTO readings_history (user_id,action,header,result) VALUES (?,?,?,?)",
+                         (user_id, action, header[:120] if header else action, result))
         await db.execute("""DELETE FROM readings_history WHERE user_id=? AND id NOT IN (
-            SELECT id FROM readings_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10)""",
+            SELECT id FROM readings_history WHERE user_id=? ORDER BY created_at DESC LIMIT 20)""",
                          (user_id, user_id))
         await db.commit()
 
 async def get_reading_history(user_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT action, header, created_at FROM readings_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10",
+        async with db.execute("SELECT id, action, header, created_at FROM readings_history WHERE user_id=? ORDER BY created_at DESC LIMIT 20",
                               (user_id,)) as c:
             return await c.fetchall()
 
@@ -840,13 +874,16 @@ def horoscope_period_kb(sign: str, lang: str = 'ru'):
 
 def profile_kb(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
-    kb.button(text=t(lang,'btn_set_birthdate'), callback_data="profile_set_birthdate")
     kb.button(text=t(lang,'btn_set_name'), callback_data="profile_set_name")
+    kb.button(text=t(lang,'btn_set_birthdate'), callback_data="profile_set_birthdate")
     kb.button(text=t(lang,'btn_set_zodiac'), callback_data="profile_set_zodiac")
+    kb.button(text=t(lang,'btn_set_gender'), callback_data="profile_set_gender")
+    kb.button(text=t(lang,'btn_set_city'), callback_data="profile_set_city")
+    kb.button(text=t(lang,'btn_set_timezone'), callback_data="profile_set_timezone")
     kb.button(text=t(lang,'btn_history'), callback_data="history_view")
     kb.button(text=t(lang,'btn_clear_profile'), callback_data="profile_clear")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
-    kb.adjust(1)
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    kb.adjust(2, 2, 2, 1, 1, 1)
     return kb.as_markup()
 
 def career_menu_kb(lang: str = 'ru'):
@@ -920,7 +957,7 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
     result = f"{result_header}\n\n{answer}" if result_header else answer
     back_to = ACTION_BACK.get(action, "back_main")
     await _edit_or_send(chat_id, prompt_msg_id, result, result_keyboard(lang, back_to))
-    await save_reading_history(uid, action, result_header)
+    await save_reading_history(uid, action, result_header, result)
     if milestone:
         await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
 
@@ -1051,6 +1088,30 @@ async def check_crypto_payments():
         except Exception as e:
             logger.error(f"check_crypto_payments error: {e}")
 
+async def send_welcome_msg(message: Message, lang: str, markup):
+    """Send photo welcome if WELCOME_PHOTO is set, otherwise plain text."""
+    text = t(lang, 'welcome')
+    if WELCOME_PHOTO:
+        try:
+            await message.answer_photo(photo=WELCOME_PHOTO, caption=text[:1024],
+                                       parse_mode="Markdown", reply_markup=markup)
+            return
+        except Exception:
+            pass
+    await message.answer(text, parse_mode="Markdown", reply_markup=markup)
+
+async def send_lang_select(message: Message):
+    """Send language selection, with photo if configured."""
+    text = t('ru', 'choose_lang')
+    if WELCOME_PHOTO:
+        try:
+            await message.answer_photo(photo=WELCOME_PHOTO, caption=text,
+                                       parse_mode="Markdown", reply_markup=language_keyboard())
+            return
+        except Exception:
+            pass
+    await message.answer(text, reply_markup=language_keyboard())
+
 # ─── COMMAND HANDLERS ─────────────────────────────────────────────────────────
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
@@ -1086,19 +1147,35 @@ async def cmd_start(message: Message):
         else:
             await db.commit()
     if not await has_chosen_language(uid):
-        await message.answer(t('ru','choose_lang'), reply_markup=language_keyboard())
+        await send_lang_select(message)
         return
     lang = await get_user_lang(uid)
-    await message.answer(t(lang,'welcome'), parse_mode="Markdown", reply_markup=main_menu(lang))
+    await send_welcome_msg(message, lang, main_menu(lang))
 
 @dp.message(Command("menu"))
 async def cmd_menu(message: Message):
     lang = await get_user_lang(message.from_user.id)
-    await message.answer(t(lang,'main_menu_title'), parse_mode="Markdown", reply_markup=main_menu(lang))
+    await send_welcome_msg(message, lang, main_menu(lang))
 
 @dp.message(Command("myid"))
 async def cmd_myid(message: Message):
     await message.answer(f"`{message.from_user.id}`", parse_mode="Markdown")
+
+@dp.message(Command("setphoto"))
+async def cmd_setphoto(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    if not message.photo:
+        await message.answer(
+            "📸 Отправь команду `/setphoto` *вместе с фото* (прикрепи изображение и в подписи напиши `/setphoto`).\n\n"
+            "После получения `file_id` вставь его в `.env`:\n`WELCOME_PHOTO=полученный_id`",
+            parse_mode="Markdown")
+        return
+    file_id = message.photo[-1].file_id
+    await message.answer(
+        f"✅ *file\\_id фото получен:*\n\n`{file_id}`\n\n"
+        f"Вставь в `.env`:\n`WELCOME_PHOTO={file_id}`\n\nЗатем перезапусти бота.",
+        parse_mode="Markdown")
 
 @dp.message(Command("admin", "a"))
 async def cmd_admin(message: Message):
@@ -1124,6 +1201,7 @@ async def cmd_admin(message: Message):
             f"`/setbonus <id> <кол-во>` — установить бонусные запросы\n\n"
             f"*📢 Прочее:*\n"
             f"`/broadcast <текст>` — рассылка всем\n"
+            f"`/setphoto` + фото — установить фото приветствия\n"
             f"`/promo create <КОД> <ДНЕЙ> [МАКС]` — промокод\n"
             f"`/promo list` — список промокодов\n"
             f"`/promo delete <КОД>` — удалить\n\n"
@@ -1491,17 +1569,21 @@ async def zodiac_selected(callback: CallbackQuery):
     await callback.answer()
 
 # ─── CALLBACK: PROFILE ────────────────────────────────────────────────────────
+def _profile_text(lang: str, p: dict) -> str:
+    empty = t(lang,'profile_empty')
+    zname = ZODIAC_NAMES.get(lang, ZODIAC_NAMES['ru']).get(p.get('zodiac',''), p.get('zodiac','') or empty)
+    return t(lang,'profile_title',
+             name=p.get('full_name') or empty, birth=p.get('birth_date') or empty,
+             zodiac=zname or empty, gender=p.get('gender') or empty,
+             city=p.get('city') or empty, timezone=p.get('timezone') or empty,
+             streak=p.get('streak',0), bonus=p.get('bonus',0))
+
 @dp.callback_query(F.data == "profile")
 async def profile_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     p = await get_profile(uid)
-    empty = t(lang,'profile_empty')
-    zname = ZODIAC_NAMES.get(lang, ZODIAC_NAMES['ru']).get(p.get('zodiac',''), p.get('zodiac','') or empty)
-    text = t(lang,'profile_title',
-             birth=p.get('birth_date') or empty, name=p.get('full_name') or empty,
-             zodiac=zname or empty, streak=p.get('streak',0), bonus=p.get('bonus',0))
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=profile_kb(lang))
+    await callback.message.edit_text(_profile_text(lang, p), parse_mode="Markdown", reply_markup=profile_kb(lang))
     await callback.answer()
 
 @dp.callback_query(F.data == "profile_set_birthdate")
@@ -1528,19 +1610,48 @@ async def profile_zodiac_selected(callback: CallbackQuery):
     await save_profile_field(callback.from_user.id, "zodiac", sign)
     p = await get_profile(callback.from_user.id)
     empty = t(lang,'profile_empty')
-    zname = ZODIAC_NAMES.get(lang, ZODIAC_NAMES['ru']).get(sign, sign)
-    text = t(lang,'profile_title', birth=p.get('birth_date') or empty, name=p.get('full_name') or empty,
-             zodiac=zname, streak=p.get('streak',0), bonus=p.get('bonus',0))
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=profile_kb(lang))
+    p = await get_profile(callback.from_user.id)
+    await callback.message.edit_text(_profile_text(lang, p), parse_mode="Markdown", reply_markup=profile_kb(lang))
     await callback.answer(t(lang,'profile_saved'))
+
+@dp.callback_query(F.data == "profile_set_gender")
+async def profile_set_gender_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_gender_m'), callback_data="pgender_m")
+    kb.button(text=t(lang,'btn_gender_f'), callback_data="pgender_f")
+    kb.button(text=t(lang,'btn_gender_o'), callback_data="pgender_o")
+    kb.button(text=t(lang,'btn_back'), callback_data="profile")
+    kb.adjust(3, 1)
+    await callback.message.edit_text(t(lang,'set_gender_prompt'), parse_mode="Markdown", reply_markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("pgender_"))
+async def profile_gender_selected(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    code = callback.data[8:]
+    labels = {'m': t(lang,'btn_gender_m'), 'f': t(lang,'btn_gender_f'), 'o': t(lang,'btn_gender_o')}
+    await save_profile_field(callback.from_user.id, "gender", labels.get(code, code))
+    p = await get_profile(callback.from_user.id)
+    await callback.message.edit_text(_profile_text(lang, p), parse_mode="Markdown", reply_markup=profile_kb(lang))
+    await callback.answer(t(lang,'profile_saved'))
+
+@dp.callback_query(F.data == "profile_set_city")
+async def profile_set_city_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await _set_input_state(callback, "profile_city", "set_city_prompt", lang)
+
+@dp.callback_query(F.data == "profile_set_timezone")
+async def profile_set_timezone_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    await _set_input_state(callback, "profile_timezone", "set_timezone_prompt", lang)
 
 @dp.callback_query(F.data == "profile_clear")
 async def profile_clear_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
     await clear_profile(callback.from_user.id)
-    empty = t(lang,'profile_empty')
-    text = t(lang,'profile_title', birth=empty, name=empty, zodiac=empty, streak=0, bonus=0)
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=profile_kb(lang))
+    p = await get_profile(callback.from_user.id)
+    await callback.message.edit_text(_profile_text(lang, p), parse_mode="Markdown", reply_markup=profile_kb(lang))
     await callback.answer("🗑")
 
 # ─── CALLBACK: SUPPORT & REFERRAL ─────────────────────────────────────────────
@@ -1916,16 +2027,45 @@ async def history_view_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     history = await get_reading_history(uid)
-    if not history:
-        text = t(lang,'history_empty')
-    else:
-        text = t(lang,'history_title')
-        for action, header, created_at in history:
-            entry = (header or action)[:80]
-            date_str = created_at[:16] if created_at else "—"
-            text += f"🔸 {entry}\n_🕐 {date_str}_\n\n"
     kb = InlineKeyboardBuilder()
-    kb.button(text=t(lang,'btn_back'), callback_data="profile")
+    if not history:
+        kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+        await callback.message.edit_text(t(lang,'history_empty'), parse_mode="Markdown", reply_markup=kb.as_markup())
+        await callback.answer()
+        return
+    for id_, action, header, created_at in history:
+        title = (header or action).replace("*","").replace("_","").replace("\n"," ").strip()
+        date_str = created_at[:10] if created_at else "—"
+        btn_label = f"🔸 {title[:38]} | {date_str}"
+        kb.button(text=btn_label, callback_data=f"hist_{id_}")
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    kb.adjust(1)
+    title_text = t(lang,'history_title') + "_Нажмите на запись — увидите полный результат:_" if lang == 'ru' else t(lang,'history_title') + "_Tap a record to see the full result:_"
+    await callback.message.edit_text(title_text, parse_mode="Markdown", reply_markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("hist_"))
+async def history_item_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    try:
+        history_id = int(callback.data[5:])
+    except ValueError:
+        await callback.answer(); return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT header, result, created_at FROM readings_history WHERE id=? AND user_id=?",
+                              (history_id, uid)) as c:
+            row = await c.fetchone()
+    if not row:
+        await callback.answer("❌ Запись не найдена.", show_alert=True); return
+    header, result, created_at = row
+    text = result if result else (header or "—")
+    date_str = created_at[:16] if created_at else "—"
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+    text = f"🕐 _{date_str}_\n\n{text}"
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_back'), callback_data="history_view")
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     await callback.answer()
 
@@ -2007,25 +2147,25 @@ async def handle_message(message: Message):
     if action == "profile_birthdate":
         await save_profile_field(uid, "birth_date", text)
         p = await get_profile(uid)
-        empty = t(lang,'profile_empty')
-        zname = ZODIAC_NAMES.get(lang,ZODIAC_NAMES['ru']).get(p.get('zodiac',''), p.get('zodiac','') or empty)
-        await _edit_or_send(chat_id, prompt_msg_id,
-                            t(lang,'profile_title',birth=p.get('birth_date') or empty,
-                              name=p.get('full_name') or empty, zodiac=zname or empty,
-                              streak=p.get('streak',0), bonus=p.get('bonus',0)),
-                            profile_kb(lang))
+        await _edit_or_send(chat_id, prompt_msg_id, _profile_text(lang, p), profile_kb(lang))
         return
 
     if action == "profile_name":
         await save_profile_field(uid, "full_name", text)
         p = await get_profile(uid)
-        empty = t(lang,'profile_empty')
-        zname = ZODIAC_NAMES.get(lang,ZODIAC_NAMES['ru']).get(p.get('zodiac',''), p.get('zodiac','') or empty)
-        await _edit_or_send(chat_id, prompt_msg_id,
-                            t(lang,'profile_title',birth=p.get('birth_date') or empty,
-                              name=p.get('full_name') or empty, zodiac=zname or empty,
-                              streak=p.get('streak',0), bonus=p.get('bonus',0)),
-                            profile_kb(lang))
+        await _edit_or_send(chat_id, prompt_msg_id, _profile_text(lang, p), profile_kb(lang))
+        return
+
+    if action == "profile_city":
+        await save_profile_field(uid, "city", text)
+        p = await get_profile(uid)
+        await _edit_or_send(chat_id, prompt_msg_id, _profile_text(lang, p), profile_kb(lang))
+        return
+
+    if action == "profile_timezone":
+        await save_profile_field(uid, "timezone", text)
+        p = await get_profile(uid)
+        await _edit_or_send(chat_id, prompt_msg_id, _profile_text(lang, p), profile_kb(lang))
         return
 
     # ── Promo code ────────────────────────────────────────────────────────────
