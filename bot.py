@@ -1395,9 +1395,11 @@ async def show_admin_menu(message_or_callback):
     kb.button(text="👥 Пользователи", callback_data="adm_users_0")
     kb.button(text="💎 Подписчики", callback_data="adm_subs_0")
     kb.button(text="📊 Активность", callback_data="adm_activity")
+    kb.button(text="🔍 Найти юзера", callback_data="adm_search")
+    kb.button(text="🎟 Промокоды", callback_data="adm_promos")
     kb.button(text="📢 Рассылка", callback_data="adm_broadcast_menu")
-    kb.adjust(2, 2)
-    if hasattr(message_or_callback, 'answer'):
+    kb.adjust(2, 2, 2)
+    if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     else:
         await safe_edit(message_or_callback, text, markup=kb.as_markup())
@@ -1471,6 +1473,7 @@ async def adm_user_detail_cb(callback: CallbackQuery):
         kb.button(text="❌ Отозвать подписку", callback_data=f"adm_revoke_{target_uid}")
     kb.button(text="💎 +30 дней", callback_data=f"adm_add30_{target_uid}")
     kb.button(text="🔄 Сбросить лимит", callback_data=f"adm_rlimit_{target_uid}")
+    kb.button(text="✉️ Написать юзеру", callback_data=f"adm_msg_{target_uid}")
     kb.button(text="◀️ К списку", callback_data="adm_users_0")
     kb.adjust(1)
     await safe_edit(callback, text, markup=kb.as_markup())
@@ -1533,7 +1536,7 @@ async def adm_rlimit_cb(callback: CallbackQuery):
 async def adm_main_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
     await show_admin_menu(callback)
-    await callback.answer()
+    await callback.answer("")
 
 @dp.callback_query(F.data == "adm_noop")
 async def adm_noop_cb(callback: CallbackQuery):
@@ -1602,6 +1605,56 @@ async def adm_broadcast_menu_cb(callback: CallbackQuery):
     kb.button(text="🏠 Меню", callback_data="adm_main")
     await safe_edit(callback, text, markup=kb.as_markup())
     await callback.answer()
+
+@dp.callback_query(F.data == "adm_search")
+async def adm_search_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    user_states[callback.from_user.id] = {"action": "adm_search"}
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Отмена", callback_data="adm_main")
+    await safe_edit(callback, "🔍 *Поиск пользователя*\n\nВведите Telegram ID (числом) или @username:", markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("adm_msg_"))
+async def adm_msg_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    target_uid = int(callback.data.split("_")[2])
+    user_states[callback.from_user.id] = {"action": "adm_msg", "target_uid": target_uid}
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Отмена", callback_data=f"adm_u_{target_uid}")
+    await safe_edit(callback, f"✉️ *Сообщение пользователю* `{target_uid}`\n\nВведите текст сообщения:", markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_promos")
+async def adm_promos_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT code, days, used_count, max_uses FROM promo_codes ORDER BY created_at DESC LIMIT 20") as c:
+            promos = await c.fetchall()
+    if not promos:
+        text = "🎟 *Промокоды*\n\nПромокодов нет.\n\nСоздать: `/promo create КОД 30`"
+    else:
+        text = "🎟 *Промокоды*\n\n"
+        for code, days, used, max_uses in promos:
+            text += f"• `{code}` — {days} дн. ({used}/{max_uses} исп.)\n"
+    kb = InlineKeyboardBuilder()
+    for code, days, used, max_uses in (promos or []):
+        kb.button(text=f"❌ {code}", callback_data=f"adm_delpromo_{code}")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(*([1]*len(promos)), 1) if promos else kb.adjust(1)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("adm_delpromo_"))
+async def adm_delpromo_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    code = callback.data[len("adm_delpromo_"):]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM promo_codes WHERE code=?", (code,))
+        await db.commit()
+    await callback.answer(f"🗑 Промокод {code} удалён", show_alert=True)
+    callback.data = "adm_promos"
+    await adm_promos_cb(callback)
 
 @dp.message(Command("grant"))
 async def cmd_grant(message: Message):
