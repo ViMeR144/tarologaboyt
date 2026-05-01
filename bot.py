@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+BOT_USERNAME = ""  # set in main()
 
 # ─── TRANSLATIONS ─────────────────────────────────────────────────────────────
 TEXTS = {
@@ -201,6 +202,13 @@ TEXTS = {
         'invoice_title': "Подписка Мистра — 30 дней",
         'invoice_desc': "Безлимитный доступ ко всем функциям бота на 30 дней",
         'payment_unavail': "Оплата картой временно недоступна",
+        'btn_refund': "💳 Возврат средств",
+        'refund_request_msg': "💳 *Запрос возврата средств*\n\nВы оплатили подписку через СБП/ЮКасса на сумму *250 ₽*.\n\n⚠️ После возврата:\n• Подписка будет немедленно отменена\n• Средства вернутся в течение 5-10 рабочих дней\n\nПодтвердить возврат?",
+        'refund_no_payment': "❌ Возврат недоступен\n\nДля возврата обратитесь в поддержку: @{support}",
+        'refund_success': "✅ Возврат оформлен!\n\nСредства вернутся в течение 5-10 рабочих дней.\nПодписка отменена.",
+        'refund_error': "❌ Не удалось оформить возврат автоматически.\n\nОбратитесь в поддержку: @{support}",
+        'btn_refund_confirm': "✅ Да, вернуть деньги",
+        'btn_refund_cancel': "❌ Отмена",
     },
     'en': {
         'choose_lang': "🌐 Выберите язык / Choose language:",
@@ -348,6 +356,13 @@ TEXTS = {
         'invoice_title': "Mystra Subscription — 30 days",
         'invoice_desc': "Unlimited access to all bot features for 30 days",
         'payment_unavail': "Card payment is temporarily unavailable",
+        'btn_refund': "💳 Refund",
+        'refund_request_msg': "💳 *Refund Request*\n\nYou paid for a subscription via SBP/YuKassa for *250 ₽*.\n\n⚠️ After refund:\n• Subscription will be immediately cancelled\n• Funds will be returned within 5-10 business days\n\nConfirm refund?",
+        'refund_no_payment': "❌ Refund unavailable\n\nTo get a refund, contact support: @{support}",
+        'refund_success': "✅ Refund processed!\n\nFunds will be returned within 5-10 business days.\nSubscription cancelled.",
+        'refund_error': "❌ Could not process refund automatically.\n\nContact support: @{support}",
+        'btn_refund_confirm': "✅ Yes, refund",
+        'btn_refund_cancel': "❌ Cancel",
     }
 }
 
@@ -430,6 +445,10 @@ async def init_db():
             created_at TEXT DEFAULT (datetime('now')))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS yookassa_invoices (
             payment_id TEXT PRIMARY KEY, user_id INTEGER,
+            created_at TEXT DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS payments (
+            payment_id TEXT PRIMARY KEY, user_id INTEGER,
+            method TEXT, amount TEXT, currency TEXT,
             created_at TEXT DEFAULT (datetime('now')))""")
         for col in ["notifications INTEGER DEFAULT 1","language TEXT DEFAULT NULL",
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
@@ -960,6 +979,8 @@ def subscription_keyboard(has_sub: bool, lang: str = 'ru'):
             kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
         if CRYPTOBOT_TOKEN:
             kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
+    else:
+        kb.button(text=t(lang,'btn_refund'), callback_data="refund_request")
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
     kb.adjust(1)
     return kb.as_markup()
@@ -1107,12 +1128,13 @@ async def cryptobot_create_invoice(user_id: int) -> dict | None:
 async def create_yukassa_sbp_payment(uid: int) -> dict | None:
     if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
         return None
+    return_url = f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "https://t.me/"
     auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
     headers = {"Idempotency-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
     payload = {
         "amount": {"value": "250.00", "currency": "RUB"},
         "payment_method_data": {"type": "sbp"},
-        "confirmation": {"type": "redirect", "return_url": "https://t.me/" + (await bot.get_me()).username},
+        "confirmation": {"type": "redirect", "return_url": return_url},
         "capture": True,
         "description": "Подписка Мистра на 30 дней",
         "metadata": {"user_id": str(uid)}
@@ -1121,7 +1143,10 @@ async def create_yukassa_sbp_payment(uid: int) -> dict | None:
         async with aiohttp.ClientSession() as session:
             async with session.post("https://api.yookassa.ru/v3/payments",
                                     json=payload, auth=auth, headers=headers) as resp:
-                return await resp.json()
+                data = await resp.json()
+                if "id" not in data:
+                    logger.error(f"YuKassa SBP error response: {data}")
+                return data
     except Exception as e:
         logger.error(f"YuKassa SBP create error: {e}")
         return None
@@ -1148,6 +1173,11 @@ async def check_yukassa_payments():
                         ) as resp:
                             data = await resp.json()
                         if data.get("status") == "succeeded":
+                            async with aiosqlite.connect(DB_PATH) as db:
+                                await db.execute(
+                                    "INSERT OR IGNORE INTO payments (payment_id, user_id, method, amount, currency) VALUES (?,?,?,?,?)",
+                                    (payment_id, user_id, "sbp", "250.00", "RUB"))
+                                await db.commit()
                             lang = await get_user_lang(user_id)
                             expiry = await grant_subscription(user_id, 30)
                             await bot.send_message(user_id,
@@ -1239,6 +1269,20 @@ async def cmd_start(message: Message):
     username = message.from_user.username or "unknown"
     args = message.text.split(maxsplit=1)
     referrer_id = None
+    # deep link: terms accepted on website → /start ta{uid}
+    if len(args) > 1 and args[1].startswith("ta"):
+        try:
+            ta_uid = int(args[1][2:])
+            if ta_uid == uid:
+                await accept_terms(uid)
+                lang = await get_user_lang(uid)
+                await message.answer(
+                    "✅ *Соглашение принято!*\n\nДобро пожаловать в Мистру 🔮"
+                    if lang == 'ru' else
+                    "✅ *Terms accepted!*\n\nWelcome to Mystra 🔮",
+                    parse_mode="Markdown")
+        except ValueError:
+            pass
     if len(args) > 1 and args[1].startswith("ref_"):
         try:
             r = int(args[1][4:])
@@ -1268,18 +1312,19 @@ async def cmd_start(message: Message):
             await db.commit()
     if not await has_accepted_terms(uid):
         kb = InlineKeyboardBuilder()
-        kb.button(text="✅ Принимаю / I Agree", callback_data="terms_accept")
         if SITE_URL:
-            kb.button(text="🌐 Читать соглашение / Read Terms",
-                      url=f"{SITE_URL}/terms")
+            kb.button(text="📜 Читать и принять на сайте",
+                      url=f"{SITE_URL}/terms?tg={uid}")
+        kb.button(text="✅ Принимаю (без перехода)", callback_data="terms_accept")
         kb.adjust(1)
         terms_text = (
             "📜 *Прежде чем начать*\n\n"
-            "Используя бота *Мистра*, вы подтверждаете:\n\n"
+            "Для использования бота *Мистра* необходимо принять пользовательское соглашение.\n\n"
             "• Расклады носят *развлекательный характер*\n"
             "• Вам исполнилось *18 лет*\n"
             "• Вы согласны с политикой хранения данных\n\n"
-            "Полное соглашение доступно на нашем сайте 👇"
+            "👆 Нажмите кнопку выше чтобы прочитать и принять соглашение на сайте.\n"
+            "После принятия вы автоматически вернётесь в бот."
         )
         if WELCOME_PHOTO:
             try:
@@ -1338,37 +1383,225 @@ async def cmd_setphoto(message: Message):
 async def cmd_admin(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
+    await show_admin_menu(message)
+
+async def show_admin_menu(message_or_callback):
     total, reqs, subs, notif, banned, ru, en, recent = await get_admin_stats()
     text = (f"👑 *Панель администратора*\n\n"
-            f"👥 Пользователей: *{total}* (🇷🇺 {ru} / 🇬🇧 {en})\n"
-            f"📊 Запросов: *{reqs}*\n💎 Подписок: *{subs}*\n"
-            f"🔔 Рассылка: *{notif}*\n⛔ Заблокировано: *{banned}*\n\n"
-            f"*👤 Пользователи:*\n"
-            f"`/userinfo <id>` — подробная инфо\n"
-            f"`/find @username` — поиск по нику/id\n"
-            f"`/ban <id>` — заблокировать\n"
-            f"`/unban <id>` — разблокировать\n\n"
-            f"*💎 Подписки:*\n"
-            f"`/grant <id> [дней]` — выдать подписку\n"
-            f"`/adddays <id> <дней>` — продлить подписку\n"
-            f"`/revoke <id>` — отозвать подписку\n"
-            f"`/subs` — список активных подписчиков\n\n"
-            f"*🎯 Лимиты:*\n"
-            f"`/resetlimit <id>` — сбросить счётчик запросов\n"
-            f"`/setbonus <id> <кол-во>` — установить бонусные запросы\n\n"
-            f"*📢 Прочее:*\n"
-            f"`/broadcast <текст>` — рассылка всем\n"
-            f"`/setphoto` + фото — установить фото приветствия\n"
-            f"`/promo create <КОД> <ДНЕЙ> [МАКС]` — промокод\n"
-            f"`/promo list` — список промокодов\n"
-            f"`/promo delete <КОД>` — удалить\n\n"
-            f"*⏱ Последние запросы:*\n")
+            f"👥 Всего: *{total}* (🇷🇺 {ru} / 🇬🇧 {en})\n"
+            f"💎 Подписок: *{subs}* | 🔔 Рассылка: *{notif}*\n"
+            f"⛔ Заблокировано: *{banned}* | 📊 Запросов: *{reqs}*")
+    kb = InlineKeyboardBuilder()
+    kb.button(text="👥 Пользователи", callback_data="adm_users_0")
+    kb.button(text="💎 Подписчики", callback_data="adm_subs_0")
+    kb.button(text="📊 Активность", callback_data="adm_activity")
+    kb.button(text="📢 Рассылка", callback_data="adm_broadcast_menu")
+    kb.adjust(2, 2)
+    if hasattr(message_or_callback, 'answer'):
+        await message_or_callback.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
+    else:
+        await safe_edit(message_or_callback, text, markup=kb.as_markup())
+
+@dp.callback_query(F.data.startswith("adm_users_"))
+async def adm_users_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    page = int(callback.data.split("_")[2])
+    limit = 8
+    offset = page * limit
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM users") as c:
+            total = (await c.fetchone())[0]
+        async with db.execute(
+            "SELECT user_id, username, first_seen, is_banned FROM users ORDER BY first_seen DESC LIMIT ? OFFSET ?",
+            (limit, offset)) as c:
+            users = await c.fetchall()
+    total_pages = max(1, (total + limit - 1) // limit)
+    kb = InlineKeyboardBuilder()
+    for uid, uname, first_seen, is_banned in users:
+        label_name = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
+        ban_icon = "⛔" if is_banned else "👤"
+        date_str = first_seen[:10] if first_seen else "?"
+        kb.button(text=f"{ban_icon} {label_name} [{date_str}]", callback_data=f"adm_u_{uid}")
+    kb.adjust(1)
+    nav = []
+    if page > 0:
+        nav.append(("◀️", f"adm_users_{page-1}"))
+    nav.append((f"{page+1}/{total_pages}", "adm_noop"))
+    if (page + 1) < total_pages:
+        nav.append(("▶️", f"adm_users_{page+1}"))
+    for label, cd in nav:
+        kb.button(text=label, callback_data=cd)
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(*([1]*len(users)), len(nav), 1)
+    await safe_edit(callback, f"👥 *Пользователи* (всего {total})\nСтраница {page+1}/{total_pages}:", markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("adm_u_"))
+async def adm_user_detail_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    target_uid = int(callback.data.split("_")[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT username, first_seen, request_count, bonus_requests, language, is_banned, streak FROM users WHERE user_id=?",
+            (target_uid,)) as c:
+            row = await c.fetchone()
+        async with db.execute("SELECT expires_at FROM subscriptions WHERE user_id=?", (target_uid,)) as c:
+            sub = await c.fetchone()
+    if not row:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+    uname, first_seen, req_count, bonus, lang, is_banned, streak = row
+    sub_info = f"до {sub[0][:10]}" if sub else "нет"
+    name_str = f"@{uname}" if uname and uname != "unknown" else f"id:{target_uid}"
+    text = (f"👤 *{name_str}*\n"
+            f"🆔 `{target_uid}`\n"
+            f"📅 Регистрация: {first_seen[:10] if first_seen else '?'}\n"
+            f"🌐 Язык: {lang or '?'} | 🔥 Серия: {streak or 0} дн.\n"
+            f"📊 Запросов: {req_count or 0} (+{bonus or 0} бонус)\n"
+            f"💎 Подписка: {sub_info}\n"
+            f"{'⛔ ЗАБЛОКИРОВАН' if is_banned else '✅ Активен'}")
+    kb = InlineKeyboardBuilder()
+    if is_banned:
+        kb.button(text="✅ Разбанить", callback_data=f"adm_unban_{target_uid}")
+    else:
+        kb.button(text="⛔ Забанить", callback_data=f"adm_ban_{target_uid}")
+    if sub:
+        kb.button(text="❌ Отозвать подписку", callback_data=f"adm_revoke_{target_uid}")
+    kb.button(text="💎 +30 дней", callback_data=f"adm_add30_{target_uid}")
+    kb.button(text="🔄 Сбросить лимит", callback_data=f"adm_rlimit_{target_uid}")
+    kb.button(text="◀️ К списку", callback_data="adm_users_0")
+    kb.adjust(1)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("adm_ban_"))
+async def adm_ban_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    uid = int(callback.data.split("_")[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_banned=1 WHERE user_id=?", (uid,))
+        await db.commit()
+    await callback.answer("⛔ Пользователь заблокирован", show_alert=True)
+    callback.data = f"adm_u_{uid}"
+    await adm_user_detail_cb(callback)
+
+@dp.callback_query(F.data.startswith("adm_unban_"))
+async def adm_unban_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    uid = int(callback.data.split("_")[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET is_banned=0 WHERE user_id=?", (uid,))
+        await db.commit()
+    await callback.answer("✅ Пользователь разбанен", show_alert=True)
+    callback.data = f"adm_u_{uid}"
+    await adm_user_detail_cb(callback)
+
+@dp.callback_query(F.data.startswith("adm_revoke_"))
+async def adm_revoke_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    uid = int(callback.data.split("_")[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM subscriptions WHERE user_id=?", (uid,))
+        await db.commit()
+    await callback.answer("❌ Подписка отозвана", show_alert=True)
+    callback.data = f"adm_u_{uid}"
+    await adm_user_detail_cb(callback)
+
+@dp.callback_query(F.data.startswith("adm_add30_"))
+async def adm_add30_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    uid = int(callback.data.split("_")[2])
+    expiry = await grant_subscription(uid, 30)
+    await callback.answer(f"💎 +30 дней до {expiry.strftime('%d.%m.%Y')}", show_alert=True)
+    callback.data = f"adm_u_{uid}"
+    await adm_user_detail_cb(callback)
+
+@dp.callback_query(F.data.startswith("adm_rlimit_"))
+async def adm_rlimit_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    uid = int(callback.data.split("_")[2])
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET request_count=0 WHERE user_id=?", (uid,))
+        await db.commit()
+    await callback.answer("🔄 Лимит сброшен", show_alert=True)
+    callback.data = f"adm_u_{uid}"
+    await adm_user_detail_cb(callback)
+
+@dp.callback_query(F.data == "adm_main")
+async def adm_main_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    await show_admin_menu(callback)
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_noop")
+async def adm_noop_cb(callback: CallbackQuery):
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("adm_subs_"))
+async def adm_subs_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    page = int(callback.data.split("_")[2])
+    limit = 8
+    offset = page * limit
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM subscriptions WHERE expires_at > datetime('now')") as c:
+            total = (await c.fetchone())[0]
+        async with db.execute(
+            """SELECT s.user_id, u.username, s.expires_at FROM subscriptions s
+               LEFT JOIN users u ON s.user_id=u.user_id
+               WHERE s.expires_at > datetime('now')
+               ORDER BY s.expires_at DESC LIMIT ? OFFSET ?""", (limit, offset)) as c:
+            subs = await c.fetchall()
+    total_pages = max(1, (total + limit - 1) // limit)
+    kb = InlineKeyboardBuilder()
+    for uid, uname, expires_at in subs:
+        label_name = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
+        exp_str = expires_at[:10] if expires_at else "?"
+        kb.button(text=f"💎 {label_name} — до {exp_str}", callback_data=f"adm_u_{uid}")
+    kb.adjust(1)
+    nav = []
+    if page > 0: nav.append(("◀️", f"adm_subs_{page-1}"))
+    nav.append((f"{page+1}/{total_pages}", "adm_noop"))
+    if (page + 1) < total_pages: nav.append(("▶️", f"adm_subs_{page+1}"))
+    for label, cd in nav:
+        kb.button(text=label, callback_data=cd)
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(*([1]*len(subs)), len(nav), 1)
+    await safe_edit(callback, f"💎 *Активные подписчики* ({total})\nСтраница {page+1}/{total_pages}:", markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_activity")
+async def adm_activity_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id, username, action, timestamp FROM requests ORDER BY timestamp DESC LIMIT 15") as c:
+            recent = await c.fetchall()
+    text = "📊 *Последние запросы:*\n\n"
     for uid, uname, action, ts in recent:
         label = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
         text += f"• {label} — `{action}` [{ts[:16]}]\n"
-    if len(text) > 4000:
-        text = text[:4000] + "\n..."
-    await message.answer(text, parse_mode="Markdown")
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Обновить", callback_data="adm_activity")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(2)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_broadcast_menu")
+async def adm_broadcast_menu_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    text = ("📢 *Рассылка*\n\n"
+            "Используйте команду:\n"
+            "`/broadcast <текст>`\n\n"
+            "Поддерживается Markdown-разметка.")
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
 
 @dp.message(Command("grant"))
 async def cmd_grant(message: Message):
@@ -1632,16 +1865,17 @@ async def terms_accept_cb(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "terms_view")
 async def terms_view_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
     kb = InlineKeyboardBuilder()
     if SITE_URL:
-        kb.button(text=t(lang,'terms_read_btn'), url=f"{SITE_URL}/terms")
+        kb.button(text=t(lang,'terms_read_btn'), url=f"{SITE_URL}/terms?tg={uid}")
     kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
     kb.adjust(1)
     text = ("📜 *Пользовательское соглашение*\n\nПолное соглашение размещено на нашем сайте."
             if lang == 'ru' else
             "📜 *Terms of Service*\n\nThe full terms are available on our website.")
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb.as_markup())
+    await safe_edit(callback, text, markup=kb.as_markup())
     await callback.answer()
 
 # ─── CALLBACK: LANGUAGE ───────────────────────────────────────────────────────
@@ -2321,6 +2555,75 @@ async def gift_sub_cb(callback: CallbackQuery):
                            currency="XTR", prices=[LabeledPrice(label="Gift Subscription", amount=SUBSCRIPTION_STARS)])
     await callback.answer()
 
+async def get_last_yukassa_payment(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT payment_id FROM payments WHERE user_id=? ORDER BY created_at DESC LIMIT 1",
+            (user_id,)) as c:
+            row = await c.fetchone()
+    return row[0] if row else None
+
+@dp.callback_query(F.data == "refund_request")
+async def refund_request_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    if not await has_subscription(uid):
+        await callback.answer("❌ Нет активной подписки", show_alert=True)
+        return
+    payment_id = await get_last_yukassa_payment(uid)
+    if not payment_id:
+        await safe_edit(callback, t(lang, 'refund_no_payment', support=SUPPORT_USERNAME))
+        await callback.answer()
+        return
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang, 'btn_refund_confirm'), callback_data=f"refund_confirm_{payment_id}")
+    kb.button(text=t(lang, 'btn_refund_cancel'), callback_data="subscription")
+    kb.adjust(1)
+    await safe_edit(callback, t(lang, 'refund_request_msg'), markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("refund_confirm_"))
+async def refund_confirm_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    payment_id = callback.data[len("refund_confirm_"):]
+    if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
+        await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME))
+        await callback.answer()
+        return
+    auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
+    headers = {"Idempotency-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
+    refund_payload = {
+        "amount": {"value": "250.00", "currency": "RUB"},
+        "payment_id": payment_id
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post("https://api.yookassa.ru/v3/refunds",
+                                    json=refund_payload, auth=auth, headers=headers) as resp:
+                data = await resp.json()
+        status = data.get("status", "")
+        if status in ("succeeded", "pending"):
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("DELETE FROM subscriptions WHERE user_id=?", (uid,))
+                await db.commit()
+            await safe_edit(callback, t(lang, 'refund_success'))
+            if ADMIN_ID:
+                uname = f"@{callback.from_user.username}" if callback.from_user.username else f"id:{uid}"
+                await bot.send_message(ADMIN_ID,
+                    f"🔄 *Возврат оформлен*\n"
+                    f"👤 {uname} (`{uid}`)\n"
+                    f"💳 payment_id: `{payment_id}`\n"
+                    f"💵 250.00 RUB | статус: {status}",
+                    parse_mode="Markdown")
+        else:
+            logger.error(f"YuKassa refund failed for {uid}: {data}")
+            await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME))
+    except Exception as e:
+        logger.error(f"YuKassa refund error for {uid}: {e}")
+        await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME))
+    await callback.answer()
+
 # ─── MESSAGE HANDLER ──────────────────────────────────────────────────────────
 @dp.message()
 async def handle_message(message: Message):
@@ -2570,6 +2873,9 @@ async def set_commands():
 
 async def main():
     logger.info("Бот Мистра запускается...")
+    global BOT_USERNAME
+    me = await bot.get_me()
+    BOT_USERNAME = me.username or ""
     await init_db()
     await set_commands()
     asyncio.create_task(daily_broadcast_loop())
