@@ -22,13 +22,14 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 YUKASSA_TOKEN = os.getenv("YUKASSA_TOKEN", "")
-YUKASSA_SHOP_ID = os.getenv("YUKASSA_SHOP_ID", "")
-YUKASSA_SECRET_KEY = os.getenv("YUKASSA_SECRET_KEY", "")
-# fallback: parse from provider token if direct vars not set
-if not YUKASSA_SHOP_ID and YUKASSA_TOKEN and YUKASSA_TOKEN.count(":") >= 2:
-    _yp = YUKASSA_TOKEN.split(":", 2)
+# YK_SBP format: "shopId:secretKey" — for direct YuKassa API (SBP payments)
+_yk_sbp = os.getenv("YK_SBP", "")
+YUKASSA_SHOP_ID = ""
+YUKASSA_SECRET_KEY = ""
+if _yk_sbp and ":" in _yk_sbp:
+    _yp = _yk_sbp.split(":", 1)
     YUKASSA_SHOP_ID = _yp[0]
-    YUKASSA_SECRET_KEY = _yp[2]
+    YUKASSA_SECRET_KEY = _yp[1]
 STRIPE_TOKEN = os.getenv("STRIPE_TOKEN", "")
 CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN", "")
 CRYPTOBOT_API = "https://pay.crypt.bot/api"
