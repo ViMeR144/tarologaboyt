@@ -34,7 +34,7 @@ STRIPE_TOKEN = os.getenv("STRIPE_TOKEN", "")
 CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN", "")
 CRYPTOBOT_API = "https://pay.crypt.bot/api"
 WELCOME_PHOTO = os.getenv("WELCOME_PHOTO", "")
-SITE_URL = os.getenv("SITE_URL", "")
+SITE_URL = os.getenv("SITE_URL", "").strip().rstrip("/")
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "support")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 
@@ -1917,7 +1917,7 @@ async def terms_view_cb(callback: CallbackQuery):
     lang = await get_user_lang(uid)
     kb = InlineKeyboardBuilder()
     if SITE_URL:
-        kb.button(text=t(lang,'terms_read_btn'), url=f"{SITE_URL}/terms?tg={uid}")
+        kb.button(text=t(lang,'terms_read_btn'), url=f"{SITE_URL}/terms")
     kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
     kb.adjust(1)
     text = ("📜 *Пользовательское соглашение*\n\nПолное соглашение размещено на нашем сайте."
