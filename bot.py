@@ -25,6 +25,7 @@ STRIPE_TOKEN = os.getenv("STRIPE_TOKEN", "")
 CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN", "")
 CRYPTOBOT_API = "https://pay.crypt.bot/api"
 WELCOME_PHOTO = os.getenv("WELCOME_PHOTO", "")
+SITE_URL = os.getenv("SITE_URL", "")
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "support")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 
@@ -46,7 +47,10 @@ claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 TEXTS = {
     'ru': {
         'choose_lang': "🌐 Выберите язык / Choose language:",
-        'welcome': "🔮 *Добро пожаловать в пространство Мистры*\n\nЯ — ваш проводник в мире Таро и Нумерологии. Здесь нет случайностей — лишь знаки, которые ждут своей интерпретации.\n\nЧто вас привело сегодня?",
+        'welcome': "🔮 *Добро пожаловать в пространство Мистры*\n\nПолноценный расклад, как у живого таролога. Карты тасуются случайно — ИИ читает именно ваш расклад с учётом знака зодиака и вопроса.\n\n🎴 Таро · ❤️ Любовь · 💼 Карьера\n🔢 Нумерология · 🪨 Руны · 🖐 Хиромантия\n🌙 Луна · 📅 Гороскоп · 💭 Сны\n\n_Первые 5 раскладов — бесплатно._",
+        'terms_accept_btn': "✅ Принимаю",
+        'terms_view_btn': "📜 Соглашение",
+        'terms_read_btn': "🌐 Читать на сайте",
         'main_menu_title': "🔮 *Главное меню*\n\nВыберите, что вас интересует:",
         'btn_tarot': "🎴 Таро", 'btn_love': "❤️ Любовь",
         'btn_numerology': "🔢 Нумерология", 'btn_horoscope': "📅 Гороскоп",
@@ -187,7 +191,10 @@ TEXTS = {
     },
     'en': {
         'choose_lang': "🌐 Выберите язык / Choose language:",
-        'welcome': "🔮 *Welcome to Mystra's realm*\n\nI am your guide in the world of Tarot and Numerology. There are no coincidences here — only signs waiting to be interpreted.\n\nWhat brings you here today?",
+        'welcome': "🔮 *Welcome to Mystra*\n\nA full tarot reading, just like a real tarot reader. Cards are shuffled randomly — AI reads your unique spread based on your zodiac sign and question.\n\n🎴 Tarot · ❤️ Love · 💼 Career\n🔢 Numerology · 🪨 Runes · 🖐 Palmistry\n🌙 Moon · 📅 Horoscope · 💭 Dreams\n\n_First 5 readings are free._",
+        'terms_accept_btn': "✅ I Agree",
+        'terms_view_btn': "📜 Terms",
+        'terms_read_btn': "🌐 Read on website",
         'main_menu_title': "🔮 *Main Menu*\n\nChoose what interests you:",
         'btn_tarot': "🎴 Tarot", 'btn_love': "❤️ Love",
         'btn_numerology': "🔢 Numerology", 'btn_horoscope': "📅 Horoscope",
@@ -410,7 +417,8 @@ async def init_db():
                     "zodiac TEXT DEFAULT NULL","streak INTEGER DEFAULT 0",
                     "last_active_date TEXT DEFAULT NULL","is_banned INTEGER DEFAULT 0",
                     "gender TEXT DEFAULT NULL","city TEXT DEFAULT NULL",
-                    "timezone TEXT DEFAULT NULL","result TEXT DEFAULT NULL"]:
+                    "timezone TEXT DEFAULT NULL","result TEXT DEFAULT NULL",
+                    "terms_accepted INTEGER DEFAULT 0"]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
@@ -433,6 +441,17 @@ async def has_chosen_language(user_id: int) -> bool:
         async with db.execute("SELECT language FROM users WHERE user_id=?", (user_id,)) as c:
             row = await c.fetchone()
             return bool(row and row[0])
+
+async def has_accepted_terms(user_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT terms_accepted FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+            return bool(row and row[0])
+
+async def accept_terms(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET terms_accepted=1 WHERE user_id=?", (user_id,))
+        await db.commit()
 
 async def set_user_lang(user_id: int, lang: str, username: str = None):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -748,8 +767,9 @@ def account_submenu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_history'), callback_data="history_view")
     kb.button(text=t(lang,'btn_tarot_library'), callback_data="tarot_library")
     kb.button(text=t(lang,'btn_support'), callback_data="support")
+    kb.button(text=t(lang,'terms_view_btn'), callback_data="terms_view")
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
-    kb.adjust(2, 2, 2, 2, 1, 1)
+    kb.adjust(2, 2, 2, 2, 2, 1)
     return kb.as_markup()
 
 def back_button(lang: str = 'ru'):
@@ -1146,6 +1166,30 @@ async def cmd_start(message: Message):
                 pass
         else:
             await db.commit()
+    if not await has_accepted_terms(uid):
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Принимаю / I Agree", callback_data="terms_accept")
+        if SITE_URL:
+            kb.button(text="🌐 Читать соглашение / Read Terms",
+                      url=f"{SITE_URL}/terms")
+        kb.adjust(1)
+        terms_text = (
+            "📜 *Прежде чем начать*\n\n"
+            "Используя бота *Мистра*, вы подтверждаете:\n\n"
+            "• Расклады носят *развлекательный характер*\n"
+            "• Вам исполнилось *18 лет*\n"
+            "• Вы согласны с политикой хранения данных\n\n"
+            "Полное соглашение доступно на нашем сайте 👇"
+        )
+        if WELCOME_PHOTO:
+            try:
+                await message.answer_photo(photo=WELCOME_PHOTO, caption=terms_text,
+                                           parse_mode="Markdown", reply_markup=kb.as_markup())
+                return
+            except Exception:
+                pass
+        await message.answer(terms_text, parse_mode="Markdown", reply_markup=kb.as_markup())
+        return
     if not await has_chosen_language(uid):
         await send_lang_select(message)
         return
@@ -1156,6 +1200,19 @@ async def cmd_start(message: Message):
 async def cmd_menu(message: Message):
     lang = await get_user_lang(message.from_user.id)
     await send_welcome_msg(message, lang, main_menu(lang))
+
+@dp.message(Command("terms"))
+async def cmd_terms(message: Message):
+    lang = await get_user_lang(message.from_user.id)
+    kb = InlineKeyboardBuilder()
+    if SITE_URL:
+        kb.button(text=t(lang,'terms_read_btn'), url=f"{SITE_URL}/terms")
+    kb.button(text=t(lang,'btn_main_menu'), callback_data="back_main")
+    kb.adjust(1)
+    text = ("📜 *Пользовательское соглашение*\n\nПолное соглашение размещено на нашем сайте."
+            if lang == 'ru' else
+            "📜 *Terms of Service*\n\nThe full terms are available on our website.")
+    await message.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
 
 @dp.message(Command("myid"))
 async def cmd_myid(message: Message):
@@ -1251,12 +1308,13 @@ async def cmd_adddays(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT expires_at FROM subscriptions WHERE user_id=?", (uid,)) as c:
             row = await c.fetchone()
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     if row:
         base = datetime.fromisoformat(row[0])
-        if base < datetime.utcnow():
-            base = datetime.utcnow()
+        if base < now_utc:
+            base = now_utc
     else:
-        base = datetime.utcnow()
+        base = now_utc
     expiry = base + timedelta(days=days)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO subscriptions (user_id,expires_at) VALUES (?,?)",
@@ -1452,6 +1510,40 @@ async def cmd_promo_admin(message: Message):
     else:
         await message.answer("❌ Неверный формат команды.")
 
+# ─── CALLBACK: TERMS ──────────────────────────────────────────────────────────
+@dp.callback_query(F.data == "terms_accept")
+async def terms_accept_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    await accept_terms(uid)
+    await callback.answer("✅ Принято!", show_alert=False)
+    if not await has_chosen_language(uid):
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await send_lang_select(callback.message)
+        return
+    lang = await get_user_lang(uid)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await send_welcome_msg(callback.message, lang, main_menu(lang))
+
+@dp.callback_query(F.data == "terms_view")
+async def terms_view_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    kb = InlineKeyboardBuilder()
+    if SITE_URL:
+        kb.button(text=t(lang,'terms_read_btn'), url=f"{SITE_URL}/terms")
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    kb.adjust(1)
+    text = ("📜 *Пользовательское соглашение*\n\nПолное соглашение размещено на нашем сайте."
+            if lang == 'ru' else
+            "📜 *Terms of Service*\n\nThe full terms are available on our website.")
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb.as_markup())
+    await callback.answer()
+
 # ─── CALLBACK: LANGUAGE ───────────────────────────────────────────────────────
 @dp.callback_query(F.data.startswith("lang_"))
 async def lang_selected(callback: CallbackQuery):
@@ -1608,8 +1700,6 @@ async def profile_zodiac_selected(callback: CallbackQuery):
     sign = callback.data[8:]
     lang = await get_user_lang(callback.from_user.id)
     await save_profile_field(callback.from_user.id, "zodiac", sign)
-    p = await get_profile(callback.from_user.id)
-    empty = t(lang,'profile_empty')
     p = await get_profile(callback.from_user.id)
     await callback.message.edit_text(_profile_text(lang, p), parse_mode="Markdown", reply_markup=profile_kb(lang))
     await callback.answer(t(lang,'profile_saved'))
@@ -2324,6 +2414,7 @@ async def handle_message(message: Message):
 async def set_commands():
     await bot.set_my_commands([
         BotCommand(command="menu", description="🔮 Главное меню / Main menu"),
+        BotCommand(command="terms", description="📜 Пользовательское соглашение"),
         BotCommand(command="myid", description="🆔 Ваш Telegram ID"),
     ])
 
