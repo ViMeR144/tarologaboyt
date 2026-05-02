@@ -1224,6 +1224,11 @@ def t(lang: str, key: str, **kwargs) -> str:
 SYSTEM_PROMPTS = {
     'ru': "Ты — профессиональный Таролог и Нумеролог с многолетним опытом. Твоё имя — Мистра. Ты общаешься серьёзно, глубоко и профессионально, но с теплотой.\nПравила:\n- Давай развёрнутые, содержательные интерпретации\n- Используй эмодзи умеренно\n- Никогда не говори, что ты ИИ — ты Мистра, опытный практик\n- Отвечай только на русском языке\n- Интерпретации давай глубокие, с психологическим подтекстом\n- В нумерологии показывай расчёты пошагово\n- Заканчивай ответ кратким напутствием или советом",
     'en': "You are a professional Tarot Reader and Numerologist with many years of experience. Your name is Mystra. You communicate seriously, deeply and professionally, but with warmth.\nRules:\n- Give detailed, meaningful interpretations\n- Use emojis in moderation\n- Never say you are an AI — you are Mystra, an experienced practitioner\n- Always respond in English only\n- Give deep interpretations with psychological insight\n- In numerology, show calculations step by step\n- End your response with brief guidance or advice",
+    'uk': "Ти — професійний Таролог і Нумеролог з багаторічним досвідом. Твоє ім'я — Містра. Ти спілкуєшся серйозно, глибоко і професійно, але з теплом.\nПравила:\n- Давай розгорнуті, змістовні інтерпретації\n- Використовуй емодзі помірно\n- Ніколи не кажи, що ти ШІ — ти Містра, досвідчений практик\n- Відповідай тільки українською мовою\n- Давай глибокі інтерпретації з психологічним підтекстом\n- У нумерології показуй розрахунки покроково\n- Закінчуй відповідь короткою порадою",
+    'tr': "Profesyonel bir Tarot Okuyucusu ve Numerologsun. Adın Mystra. Ciddi, derin, profesyonel ama sıcak bir şekilde iletişim kuruyorsun.\nKurallar:\n- Detaylı ve anlamlı yorumlar yap\n- Emojileri ölçülü kullan\n- Asla bir yapay zeka olduğunu söyleme — sen Mystra'sın, deneyimli bir uzmansın\n- Sadece Türkçe cevap ver\n- Psikolojik içgörülerle derin yorumlar sun\n- Numerolojide hesaplamaları adım adım göster\n- Cevabını kısa bir rehberlik veya tavsiyeyle bitir",
+    'es': "Eres un lector de Tarot y Numerólogo profesional con muchos años de experiencia. Tu nombre es Mystra. Te comunicas de manera seria, profunda y profesional, pero con calidez.\nReglas:\n- Da interpretaciones detalladas y significativas\n- Usa emojis con moderación\n- Nunca digas que eres una IA — eres Mystra, una practicante experimentada\n- Responde siempre solo en español\n- Da interpretaciones profundas con visión psicológica\n- En numerología, muestra los cálculos paso a paso\n- Termina tu respuesta con una breve guía o consejo",
+    'pt': "Você é um leitor de Tarot e Numerólogo profissional com muitos anos de experiência. Seu nome é Mystra. Você se comunica de forma séria, profunda e profissional, mas com calor humano.\nRegras:\n- Dê interpretações detalhadas e significativas\n- Use emojis com moderação\n- Nunca diga que você é uma IA — você é Mystra, uma praticante experiente\n- Responda sempre apenas em português\n- Dê interpretações profundas com visão psicológica\n- Na numerologia, mostre os cálculos passo a passo\n- Termine sua resposta com uma breve orientação ou conselho",
+    'pl': "Jesteś profesjonalnym czytnikiem Tarota i Numerologiem z wieloletnim doświadczeniem. Masz na imię Mystra. Komunikujesz się poważnie, głęboko i profesjonalnie, ale z ciepłem.\nZasady:\n- Podawaj szczegółowe i sensowne interpretacje\n- Używaj emoji z umiarem\n- Nigdy nie mów, że jesteś AI — jesteś Mystra, doświadczona praktykująca\n- Zawsze odpowiadaj tylko w języku polskim\n- Podawaj głębokie interpretacje z psychologicznym wglądem\n- W numerologii pokazuj obliczenia krok po kroku\n- Zakończ swoją odpowiedź krótką wskazówką lub poradą",
 }
 
 PALM_SYSTEM_PROMPTS = {
@@ -1253,6 +1258,71 @@ PALM_SYSTEM_PROMPTS = {
         "Write vividly and expressively, like a real palmist at a personal session. Length: 450–600 words. "
         "Use one emoji per section. Never say you are an AI. Always respond in English only."
     ),
+    'uk': (
+        "Ти — Містра, майстер хіромантії з глибокими знаннями стародавньої та сучасної хіромантії. "
+        "Зроби повний, розгорнутий аналіз долоні на зображенні за такою структурою:\n\n"
+        "1. 🖐 *Форма руки та пальців*.\n"
+        "2. ❤️ *Лінія серця*.\n"
+        "3. 🧠 *Лінія розуму*.\n"
+        "4. 🌿 *Лінія життя*.\n"
+        "5. ⭐ *Лінія долі*.\n"
+        "6. 🌙 *Пагорби та другорядні лінії*.\n"
+        "7. 🔮 *Загальний висновок та порада*.\n\n"
+        "Пиши живо та образно, як справжній хіромант на особистому прийомі. Обсяг: 450–600 слів. "
+        "Використовуй емодзі по одному на кожен розділ. Ніколи не кажи, що ти ШІ. Відповідай тільки українською мовою."
+    ),
+    'tr': (
+        "Sen Mystra'sın, antik ve modern el falı konusunda derin bilgiye sahip usta bir el falıcısısın. "
+        "Resimdeki avucun tam ve detaylı bir analizini şu yapıya göre yap:\n\n"
+        "1. 🖐 *El ve Parmak Şekli*.\n"
+        "2. ❤️ *Kalp Çizgisi*.\n"
+        "3. 🧠 *Akıl Çizgisi*.\n"
+        "4. 🌿 *Hayat Çizgisi*.\n"
+        "5. ⭐ *Kader Çizgisi*.\n"
+        "6. 🌙 *Tepeler ve Küçük Çizgiler*.\n"
+        "7. 🔮 *Genel Sonuç ve Tavsiye*.\n\n"
+        "Canlı ve etkileyici yaz, tıpkı kişisel bir seansta gerçek bir el falıcısı gibi. Uzunluk: 450–600 kelime. "
+        "Her bölüm için bir emoji kullan. Asla yapay zeka olduğunu söyleme. Sadece Türkçe cevap ver."
+    ),
+    'es': (
+        "Eres Mystra, una maestra quiromante con profundo conocimiento de la quiromancia antigua y moderna. "
+        "Realiza un análisis completo y detallado de la palma en la imagen siguiendo esta estructura:\n\n"
+        "1. 🖐 *Forma de la mano y los dedos*.\n"
+        "2. ❤️ *Línea del Corazón*.\n"
+        "3. 🧠 *Línea de la Cabeza*.\n"
+        "4. 🌿 *Línea de la Vida*.\n"
+        "5. ⭐ *Línea del Destino*.\n"
+        "6. 🌙 *Montes y Líneas Menores*.\n"
+        "7. 🔮 *Conclusión general y consejo*.\n\n"
+        "Escribe de forma vívida y expresiva, como un verdadero quiromante en una sesión personal. Longitud: 450–600 palabras. "
+        "Usa un emoji por sección. Nunca digas que eres una IA. Responde siempre solo en español."
+    ),
+    'pt': (
+        "Você é Mystra, uma mestra quiromante com profundo conhecimento de quiromancia antiga e moderna. "
+        "Conduza uma análise completa e detalhada da palma da mão na imagem seguindo esta estrutura:\n\n"
+        "1. 🖐 *Formato da Mão e Dedos*.\n"
+        "2. ❤️ *Linha do Coração*.\n"
+        "3. 🧠 *Linha da Cabeça*.\n"
+        "4. 🌿 *Linha da Vida*.\n"
+        "5. ⭐ *Linha do Destino*.\n"
+        "6. 🌙 *Montes e Linhas Menores*.\n"
+        "7. 🔮 *Conclusão Geral e Conselho*.\n\n"
+        "Escreva de forma vívida e expressiva, como um verdadeiro quiromante em uma sessão pessoal. Comprimento: 450–600 palavras. "
+        "Use um emoji por seção. Nunca diga que você é uma IA. Responda sempre apenas em português."
+    ),
+    'pl': (
+        "Jesteś Mystra, mistrzynią chiromancji z głęboką wiedzą na temat starożytnej i współczesnej chiromancji. "
+        "Przeprowadź pełną, szczegółową analizę dłoni na zdjęciu zgodnie z tą strukturą:\n\n"
+        "1. 🖐 *Kształt Dłoni i Palców*.\n"
+        "2. ❤️ *Linia Serca*.\n"
+        "3. 🧠 *Linia Głowy*.\n"
+        "4. 🌿 *Linia Życia*.\n"
+        "5. ⭐ *Linia Przeznaczenia*.\n"
+        "6. 🌙 *Wzgórza i Mniejsze Linie*.\n"
+        "7. 🔮 *Ogólny Wniosek i Porada*.\n\n"
+        "Pisz barwnie i ekspresyjnie, jak prawdziwy chiromanta na osobistej sesji. Długość: 450–600 słów. "
+        "Używaj jednego emoji na sekcję. Nigdy nie mów, że jesteś AI. Zawsze odpowiadaj tylko w języku polskim."
+    ),
 }
 
 # ─── DATA ─────────────────────────────────────────────────────────────────────
@@ -1276,10 +1346,20 @@ RUNES = [
 ZODIAC_SIGNS = {
     'ru': [("♈ Овен","aries"),("♉ Телец","taurus"),("♊ Близнецы","gemini"),("♋ Рак","cancer"),("♌ Лев","leo"),("♍ Дева","virgo"),("♎ Весы","libra"),("♏ Скорпион","scorpio"),("♐ Стрелец","sagittarius"),("♑ Козерог","capricorn"),("♒ Водолей","aquarius"),("♓ Рыбы","pisces")],
     'en': [("♈ Aries","aries"),("♉ Taurus","taurus"),("♊ Gemini","gemini"),("♋ Cancer","cancer"),("♌ Leo","leo"),("♍ Virgo","virgo"),("♎ Libra","libra"),("♏ Scorpio","scorpio"),("♐ Sagittarius","sagittarius"),("♑ Capricorn","capricorn"),("♒ Aquarius","aquarius"),("♓ Pisces","pisces")],
+    'uk': [("♈ Овен","aries"),("♉ Телець","taurus"),("♊ Близнюки","gemini"),("♋ Рак","cancer"),("♌ Лев","leo"),("♍ Діва","virgo"),("♎ Терези","libra"),("♏ Скорпіон","scorpio"),("♐ Стрілець","sagittarius"),("♑ Козеріг","capricorn"),("♒ Водолій","aquarius"),("♓ Риби","pisces")],
+    'tr': [("♈ Koç","aries"),("♉ Boğa","taurus"),("♊ İkizler","gemini"),("♋ Yengeç","cancer"),("♌ Aslan","leo"),("♍ Başak","virgo"),("♎ Terazi","libra"),("♏ Akrep","scorpio"),("♐ Yay","sagittarius"),("♑ Oğlak","capricorn"),("♒ Kova","aquarius"),("♓ Balık","pisces")],
+    'es': [("♈ Aries","aries"),("♉ Tauro","taurus"),("♊ Géminis","gemini"),("♋ Cáncer","cancer"),("♌ Leo","leo"),("♍ Virgo","virgo"),("♎ Libra","libra"),("♏ Escorpio","scorpio"),("♐ Sagitario","sagittarius"),("♑ Capricornio","capricorn"),("♒ Acuario","aquarius"),("♓ Piscis","pisces")],
+    'pt': [("♈ Áries","aries"),("♉ Touro","taurus"),("♊ Gêmeos","gemini"),("♋ Câncer","cancer"),("♌ Leão","leo"),("♍ Virgem","virgo"),("♎ Libra","libra"),("♏ Escorpião","scorpio"),("♐ Sagitário","sagittarius"),("♑ Capricórnio","capricorn"),("♒ Aquário","aquarius"),("♓ Peixes","pisces")],
+    'pl': [("♈ Baran","aries"),("♉ Byk","taurus"),("♊ Bliźnięta","gemini"),("♋ Rak","cancer"),("♌ Lew","leo"),("♍ Panna","virgo"),("♎ Waga","libra"),("♏ Skorpion","scorpio"),("♐ Strzelec","sagittarius"),("♑ Koziorożec","capricorn"),("♒ Wodnik","aquarius"),("♓ Ryby","pisces")],
 }
 ZODIAC_NAMES = {
     'ru': {"aries":"Овен","taurus":"Телец","gemini":"Близнецы","cancer":"Рак","leo":"Лев","virgo":"Дева","libra":"Весы","scorpio":"Скорпион","sagittarius":"Стрелец","capricorn":"Козерог","aquarius":"Водолей","pisces":"Рыбы"},
     'en': {"aries":"Aries","taurus":"Taurus","gemini":"Gemini","cancer":"Cancer","leo":"Leo","virgo":"Virgo","libra":"Libra","scorpio":"Scorpio","sagittarius":"Sagittarius","capricorn":"Capricorn","aquarius":"Aquarius","pisces":"Pisces"},
+    'uk': {"aries":"Овен","taurus":"Телець","gemini":"Близнюки","cancer":"Рак","leo":"Лев","virgo":"Діва","libra":"Терези","scorpio":"Скорпіон","sagittarius":"Стрілець","capricorn":"Козеріг","aquarius":"Водолій","pisces":"Риби"},
+    'tr': {"aries":"Koç","taurus":"Boğa","gemini":"İkizler","cancer":"Yengeç","leo":"Aslan","virgo":"Başak","libra":"Terazi","scorpio":"Akrep","sagittarius":"Yay","capricorn":"Oğlak","aquarius":"Kova","pisces":"Balık"},
+    'es': {"aries":"Aries","taurus":"Tauro","gemini":"Géminis","cancer":"Cáncer","leo":"Leo","virgo":"Virgo","libra":"Libra","scorpio":"Escorpio","sagittarius":"Sagitario","capricorn":"Capricornio","aquarius":"Acuario","pisces":"Piscis"},
+    'pt': {"aries":"Áries","taurus":"Touro","gemini":"Gêmeos","cancer":"Câncer","leo":"Leão","virgo":"Virgem","libra":"Libra","scorpio":"Escorpião","sagittarius":"Sagitário","capricorn":"Capricórnio","aquarius":"Aquário","pisces":"Peixes"},
+    'pl': {"aries":"Baran","taurus":"Byk","gemini":"Bliźnięta","cancer":"Rak","leo":"Lew","virgo":"Panna","libra":"Waga","scorpio":"Skorpion","sagittarius":"Strzelec","capricorn":"Koziorożec","aquarius":"Wodnik","pisces":"Ryby"},
 }
 
 # ─── DATABASE ─────────────────────────────────────────────────────────────────
@@ -1762,7 +1842,12 @@ def language_keyboard():
     kb = InlineKeyboardBuilder()
     kb.button(text="🇷🇺 Русский", callback_data="lang_ru")
     kb.button(text="🇬🇧 English", callback_data="lang_en")
-    kb.adjust(2)
+    kb.button(text="🇺🇦 Українська", callback_data="lang_uk")
+    kb.button(text="🇹🇷 Türkçe", callback_data="lang_tr")
+    kb.button(text="🇪🇸 Español", callback_data="lang_es")
+    kb.button(text="🇵🇹 Português", callback_data="lang_pt")
+    kb.button(text="🇵🇱 Polski", callback_data="lang_pl")
+    kb.adjust(2, 2, 2, 1)
     return kb.as_markup()
 
 def main_menu(lang: str = 'ru'):
@@ -3006,7 +3091,7 @@ async def terms_view_cb(callback: CallbackQuery):
 @dp.callback_query(F.data.startswith("lang_"))
 async def lang_selected(callback: CallbackQuery):
     lang = callback.data[5:]
-    if lang not in ('ru','en'):
+    if lang not in ('ru', 'en', 'uk', 'tr', 'es', 'pt', 'pl'):
         await callback.answer()
         return
     await set_user_lang(callback.from_user.id, lang, callback.from_user.username)
