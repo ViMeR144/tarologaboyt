@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import csv
+import io
 import logging
 import os
 import random
@@ -11,7 +13,7 @@ import aiohttp
 import aiosqlite
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, BotCommand
+from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, BotCommand, BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 import anthropic
@@ -209,6 +211,18 @@ TEXTS = {
         'refund_error': "❌ Не удалось оформить возврат автоматически.\n\nОбратитесь в поддержку: @{support}",
         'btn_refund_confirm': "✅ Да, вернуть деньги",
         'btn_refund_cancel': "❌ Отмена",
+        'btn_my_stats': "📊 Моя статистика",
+        'btn_my_payments': "📜 История платежей",
+        'btn_delete_account': "🗑 Удалить аккаунт",
+        'btn_notify_time': "⏰ Время рассылки",
+        'my_stats_title': "📊 *Ваша статистика*\n\n📆 В боте с: *{since}*\n🔢 Всего раскладов: *{total}*\n🏆 Любимый тип: *{fav}*\n🔥 Серия: *{streak} дней*\n👥 Приглашено друзей: *{refs}*\n🎁 Бонусных запросов: *+{bonus}*",
+        'my_payments_title': "📜 *История платежей*\n\n",
+        'my_payments_empty': "📜 *История платежей*\n\nПлатежей не найдено.",
+        'delete_account_confirm_msg': "🗑 *Удаление аккаунта*\n\n⚠️ Это действие *необратимо*!\n\nБудут удалены:\n• Профиль и личные данные\n• История раскладов\n• Подписка и бонусы\n• Реферальная статистика\n\nВы уверены?",
+        'delete_account_done': "✅ *Данные удалены*\n\nВаш аккаунт и все данные успешно удалены из системы.",
+        'btn_delete_confirm': "⚠️ Да, удалить всё",
+        'notify_time_title': "⏰ *Время рассылки*\n\nВыберите час отправки карты дня (московское время):\n\nТекущий: *{hour}:00 МСК*",
+        'notify_time_set': "✅ Время рассылки: *{hour}:00 МСК*",
     },
     'en': {
         'choose_lang': "🌐 Выберите язык / Choose language:",
@@ -363,7 +377,838 @@ TEXTS = {
         'refund_error': "❌ Could not process refund automatically.\n\nContact support: @{support}",
         'btn_refund_confirm': "✅ Yes, refund",
         'btn_refund_cancel': "❌ Cancel",
-    }
+        'btn_my_stats': "📊 My Statistics",
+        'btn_my_payments': "📜 Payment History",
+        'btn_delete_account': "🗑 Delete Account",
+        'btn_notify_time': "⏰ Broadcast Time",
+        'my_stats_title': "📊 *Your Statistics*\n\n📆 In bot since: *{since}*\n🔢 Total readings: *{total}*\n🏆 Favorite type: *{fav}*\n🔥 Streak: *{streak} days*\n👥 Friends invited: *{refs}*\n🎁 Bonus requests: *+{bonus}*",
+        'my_payments_title': "📜 *Payment History*\n\n",
+        'my_payments_empty': "📜 *Payment History*\n\nNo payments found.",
+        'delete_account_confirm_msg': "🗑 *Delete Account*\n\n⚠️ This action is *irreversible*!\n\nThe following will be deleted:\n• Profile and personal data\n• Reading history\n• Subscription and bonuses\n• Referral statistics\n\nAre you sure?",
+        'delete_account_done': "✅ *Data Deleted*\n\nYour account and all data have been successfully deleted.",
+        'btn_delete_confirm': "⚠️ Yes, delete everything",
+        'notify_time_title': "⏰ *Broadcast Time*\n\nChoose the hour for your daily card (Moscow time):\n\nCurrent: *{hour}:00 MSK*",
+        'notify_time_set': "✅ Broadcast time: *{hour}:00 MSK*",
+    },
+    'uk': {
+        'choose_lang': "🌐 Виберіть мову / Choose language:",
+        'welcome': "🔮 *Ласкаво просимо до простору Містри*\n\nПовноцінний розклад, як у живого таролога. Карти тасуються випадково — ШІ читає саме ваш розклад з урахуванням знаку зодіаку і питання.\n\n🎴 Таро · ❤️ Кохання · 💼 Кар'єра\n🔢 Нумерологія · 🪨 Руни · 🖐 Хіромантія\n🌙 Місяць · 📅 Гороскоп · 💭 Сни\n\n_Перші 5 розкладів — безкоштовно._",
+        'terms_accept_btn': "✅ Приймаю",
+        'terms_view_btn': "📜 Угода",
+        'terms_read_btn': "🌐 Читати на сайті",
+        'main_menu_title': "🔮 *Головне меню*\n\nОберіть, що вас цікавить:",
+        'btn_tarot': "🎴 Таро", 'btn_love': "❤️ Кохання",
+        'btn_numerology': "🔢 Нумерологія", 'btn_horoscope': "📅 Гороскоп",
+        'btn_moon': "🌙 Місяць", 'btn_lucky': "🔑 Число удачі",
+        'btn_ritual': "🌿 Ритуал дня", 'btn_week': "🃏 Карта тижня",
+        'btn_card_day': "🌟 Карта дня", 'btn_question': "❓ Поставити питання",
+        'btn_runes': "🪨 Руни", 'btn_dream': "💭 Тлумачення сну",
+        'btn_palmistry': "🖐 Хіромантія",
+        'btn_subscription': "💎 Підписка", 'btn_promo': "🎟 Промокод",
+        'btn_notifications': "🔔 Розсилка", 'btn_referral': "👥 Реферал",
+        'btn_profile': "👤 Мій профіль", 'btn_support': "🆘 Підтримка",
+        'btn_back': "◀️ Назад", 'btn_main_menu': "🏠 Головне меню",
+        'btn_cancel': "✖️ Скасувати", 'btn_language': "🌐 Мова / Language",
+        'btn_readings_menu': "🔮 Ворожіння",
+        'btn_esoterics_menu': "✨ Нумерологія & Езотерика",
+        'btn_account_menu': "👤 Акаунт",
+        'readings_menu_title': "🔮 *Ворожіння*\n\nОберіть вид ворожіння:",
+        'esoterics_menu_title': "✨ *Нумерологія & Езотерика*\n\nОберіть розділ:",
+        'account_menu_title': "👤 *Акаунт*\n\nОберіть розділ:",
+        'btn_tarot_cc': "✡️ Кельтський хрест (10 карт)", 'btn_tarot_yn': "☯️ Так / Ні",
+        'btn_career': "💼 Кар'єра", 'btn_card_year': "🗓 Карта року",
+        'btn_my_horo': "♈ Мій гороскоп", 'btn_history': "📜 Історія розкладів",
+        'btn_tarot_library': "📚 Бібліотека Таро", 'btn_gift_sub': "🎁 Подарувати підписку",
+        'btn_career_money': "💰 Гроші та фінанси", 'btn_career_job': "💼 Кар'єра / Робота",
+        'btn_career_biz': "🚀 Бізнес і проєкти",
+        'career_menu_title': "💼 *Кар'єра та гроші*\n\nОберіть тему:",
+        'tarot_cc_prompt': "✡️ *Кельтський хрест (10 карт)*\n\nОпишіть ситуацію або поставте головне питання:",
+        'tarot_yn_prompt': "☯️ *Так чи Ні?*\n\nСформулюйте питання чітко:",
+        'career_money_prompt': "💰 *Гроші та фінанси*\n\nОпишіть ситуацію або поставте питання:",
+        'career_job_prompt': "💼 *Кар'єра та робота*\n\nОпишіть ситуацію або поставте питання:",
+        'career_biz_prompt': "🚀 *Бізнес і проєкти*\n\nОпишіть ваш бізнес або проєкт:",
+        'card_year_prompt': "🗓 *Карта року*\n\nВведіть дату народження *ДД.ММ.РРРР*:\n\n_Або вкажіть її в профілі — карта відкриється одразу._",
+        'tarot_library_prompt': "📚 *Бібліотека Таро*\n\nНапишіть назву карти або тему:\n\n_Наприклад: «Блазень», «Вежа», «Масть Кубків»_",
+        'history_title': "📜 *Історія розкладів*\n\n",
+        'history_empty': "📜 *Історія розкладів*\n\nУ вас ще немає збережених розкладів.\n\nЗробіть перший розклад! 🔮",
+        'moon_new_msg': "🌑 *Новолуння*\n\nНастав час нових починань!\n\nСьогодні потужна енергія для загадування бажань і постановки цілей. 🌙",
+        'moon_full_msg': "🌕 *Повнолуння*\n\nЧас кульмінації та завершення!\n\nСьогодні загострена інтуїція, емоції на піку. Відпустіть старе і підведіть підсумки. ✨",
+        'inactive_reminder': "🔮 *Містра сумує за вами...*\n\nВи не заходили вже кілька днів. Карти чекають — можливо, сьогодні саме той день. 🌟",
+        'gift_sub_created': "🎁 *Подарунковий промокод створено!*\n\nПередайте другу цей код:\n\n`{code}`\n\nВін дає *30 днів* підписки на Містру. ✨",
+        'gift_sub_btn': "🎁 Подарувати підписку другу — {stars} Stars",
+        'tarot_menu_title': "🎴 *Розклади Таро*\n\nОберіть вид розкладу:",
+        'btn_tarot1': "🃏 1 карта — швидка відповідь",
+        'btn_tarot3': "🎴 3 карти — Минуле/Теперішнє/Майбутнє",
+        'btn_tarot5': "🔮 5 карт — Розклад на ситуацію",
+        'love_menu_title': "❤️ *Кохання та стосунки*\n\nОберіть розклад:",
+        'btn_love_thinking': "💭 Думає він/вона про мене?",
+        'btn_love_couple': "💑 Розклад на пару",
+        'btn_love_continue': "🤔 Чи варто продовжувати?",
+        'btn_love_future': "🔮 Майбутнє стосунків",
+        'num_menu_title': "🔢 *Нумерологія*\n\nОберіть метод:",
+        'btn_num_date': "📅 За датою народження", 'btn_num_name': "✏️ За іменем",
+        'btn_natal': "🌠 Натальна карта", 'btn_compat': "💑 Сумісність пар",
+        'btn_num_fate': "🔮 Число долі", 'btn_num_square': "📊 Піфагорійський квадрат",
+        'btn_num_address': "🏠 Нумерологія адреси", 'btn_num_year': "🗓 Особистий рік",
+        'btn_num_trio': "👨‍👩‍👦 Трикутник стосунків", 'btn_num_biz': "💼 Нумерологія бізнесу",
+        'btn_page_next': "➡️ Наступна сторінка", 'btn_page_prev': "⬅️ Попередня сторінка",
+        'num_fate_prompt': "🔮 *Число долі*\n\nВведіть повне ім'я та дату народження:\n\n_Наприклад: Іван Іваненко, 15.03.1995_",
+        'num_square_prompt': "📊 *Піфагорійський квадрат*\n\nВведіть дату народження: *ДД.ММ.РРРР*",
+        'num_address_prompt': "🏠 *Нумерологія адреси*\n\nВведіть адресу (вулиця, номер будинку, квартира):",
+        'num_year_prompt': "🗓 *Особистий рік*\n\nВведіть дату народження: *ДД.ММ.РРРР*",
+        'num_trio_prompt': "👨‍👩‍👦 *Трикутник стосунків*\n\nВведіть три дати народження через кому:",
+        'num_biz_prompt': "💼 *Нумерологія бізнесу*\n\nВведіть назву компанії та дату заснування:",
+        'horoscope_title': "📅 *Гороскоп*\n\nОберіть знак зодіаку:",
+        'btn_horo_day': "☀️ На сьогодні", 'btn_horo_week': "📅 На тиждень", 'btn_horo_month': "🌙 На місяць",
+        'rune_menu_title': "🪨 *Розклад на рунах*\n\nОберіть вид:",
+        'btn_rune1': "🪨 1 руна — відповідь на питання", 'btn_rune3': "🪨 3 руни — розклад ситуації",
+        'tarot1_prompt': "🃏 *Розклад на 1 карту*\n\nСформулюйте питання:\n\n_Чим точніше — тим глибша відповідь._",
+        'tarot3_prompt': "🎴 *Минуле / Теперішнє / Майбутнє*\n\nОпишіть ситуацію або поставте питання:",
+        'tarot5_prompt': "🔮 *Розклад на ситуацію (5 карт)*\n\nОпишіть детально ситуацію або питання:",
+        'num_date_prompt': "📅 *Нумерологія за датою народження*\n\nВведіть дату: *ДД.ММ.РРРР*",
+        'num_name_prompt': "✏️ *Нумерологія за іменем*\n\nВведіть повне ім'я:",
+        'natal_prompt': "🌠 *Натальна карта*\n\nВведіть: *ДД.ММ.РРРР ГГ:ХХ Місто*\n\nЧас невідомий — вкажіть 00:00",
+        'compat_prompt': "💑 *Сумісність пар*\n\nВведіть дві дати через кому:",
+        'free_question_prompt': "❓ *Питання Містрі*\n\nПоставте будь-яке питання з Таро, Нумерології або езотерики:",
+        'love_thinking_prompt': "💭 *Думає він/вона про мене?*\n\nОпишіть людину і ситуацію:",
+        'love_couple_prompt': "💑 *Розклад на пару*\n\nОпишіть вашу ситуацію у стосунках:",
+        'love_continue_prompt': "🤔 *Чи варто продовжувати?*\n\nОпишіть стосунки і що вас турбує:",
+        'love_future_prompt': "🔮 *Майбутнє стосунків*\n\nОпишіть ваші стосунки:",
+        'rune1_prompt': "🪨 *1 руна*\n\nСформулюйте питання:",
+        'rune3_prompt': "🪨 *3 руни*\n\nОпишіть ситуацію:",
+        'palmistry_prompt': "🖐 *Хіромантія*\n\nНадішліть фото вашої долоні (робочої руки).\n\n_Переконайтеся, що долоня добре освітлена._",
+        'palmistry_no_photo': "📷 Будь ласка, надішліть *фото долоні* (не текст).",
+        'reading_palm': "🖐 Читаю лінії вашої долоні...",
+        'dream_prompt': "💭 *Тлумачення сну*\n\nОпишіть ваш сон детально:",
+        'promo_prompt': "🎟 *Промокод*\n\nВведіть промокод:",
+        'profile_birthdate_prompt': "📅 Введіть дату народження: *ДД.ММ.РРРР*",
+        'profile_name_prompt': "✏️ Введіть ваше повне ім'я:",
+        'processing': "🔮 Містра читає знаки...",
+        'pulling_card': "🌟 Тягну карту дня...",
+        'reading_moon': "🌙 Читаю місячний календар...",
+        'finding_ritual': "🌿 Підбираю ритуал дня...",
+        'calc_lucky': "🔑 Обчислюю число удачі...",
+        'spreading_week': "🃏 Розкладаю карти на тиждень...",
+        'reading_horo': "📅 Читаю гороскоп для {sign}...",
+        'notif_status': "🔔 *Щоденна розсилка*\n\nСтатус: *{status}*\n\n{desc}",
+        'notif_enabled': "✅ Увімкнена", 'notif_disabled': "❌ Вимкнена",
+        'notif_on_msg': "🔔 Розсилку увімкнено! Щоранку о 8:00 чекайте карту дня.",
+        'notif_off_msg': "🔕 Розсилку вимкнено.",
+        'btn_notif_on': "🔔 Увімкнути", 'btn_notif_off': "🔕 Вимкнути",
+        'notif_desc': "Щоранку о *8:00* Містра надсилає карту дня.\nПідписники отримують розгорнуту інтерпретацію.",
+        'paywall': "🔒 *Ліміт безкоштовних запитів вичерпано*\n\nВи використали всі {free} безкоштовних запити.\n\n*Підписка на 30 днів — {stars} ⭐*\n• Безлімітні розклади Таро і Нумерологія\n• Гороскоп, Місяць, Ритуали, Карта тижня\n• Любовні розклади та багато іншого",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 ЮКаса — 250 ₽",
+        'btn_buy_sbp': "📱 СБП — 250 ₽",
+        'btn_buy_card': "💳 Visa / Mastercard — $4.99",
+        'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
+        'sbp_payment_msg': "📱 *Оплата через СБП*\n\nНатисніть кнопку нижче для оплати.",
+        'sbp_btn_pay': "📱 Відкрити форму оплати СБП",
+        'sbp_error': "❌ Помилка створення платежу. Спробуйте пізніше.",
+        'sub_active': "💎 *Ваша підписка*\n\n✅ Активна до: *{date}*\n📊 Запитів: *{count}*\n🔥 Серія: *{streak} днів*\n\nНасолоджуйтесь безлімітним доступом! 🔮",
+        'sub_inactive': "💎 *Підписка на Містру*\n\n🆓 Безкоштовних залишилось: *{remaining}/{free}*\n🔥 Серія: *{streak} днів*\n\n*Підписка включає:*\n• Таро, Нумерологія, Натальна карта\n• Гороскоп, Місяць, Ритуали, Руни\n• Любовні розклади\n\n💰 *{stars} Telegram Stars* / 30 днів",
+        'sub_activated': "✅ *Підписку активовано!*\n\n🔮 Ласкаво просимо у безмежний світ Містри!\n📅 Діє до: *{date}*\n\nРобіть необмежені розклади! 🌟",
+        'support_text': "🆘 *Технічна підтримка*\n\nЯкщо у вас виникли проблеми, напишіть нам:\n\n👤 @{username}\n\nМи відповімо якнайшвидше! ⚡",
+        'referral_text': "👥 *Реферальна програма*\n\nЗапрошуйте друзів і отримуйте *+1 безкоштовний запит* за кожного!\n\n🔗 *Ваше посилання:*\n`{link}`\n\n👥 Запрошено друзів: *{count}*\n🎁 Бонусних запитів: *+{bonus}*",
+        'btn_share_referral': "📤 Поділитися посиланням",
+        'referral_bonus_msg': "🎁 *Бонус!* {name} приєднався за вашим посиланням. +1 безкоштовний запит!",
+        'share_text': "Спробуй цього бота — ворожіння на Таро і нумерологія!",
+        'promo_success': "✅ *Промокод активовано!*\n\nПідписку продовжено на *{days} днів*. 🎉",
+        'promo_invalid': "❌ Промокод не знайдено.", 'promo_used': "❌ Ви вже використали цей промокод.",
+        'promo_exhausted': "❌ Промокод більше не діє.",
+        'profile_title': "👤 *Ваш профіль*\n\n✏️ Ім'я: *{name}*\n📅 Дата народження: *{birth}*\n♈ Знак зодіаку: *{zodiac}*\n⚧ Стать: *{gender}*\n🌆 Місто: *{city}*\n🕐 Часовий пояс: *{timezone}*\n🔥 Серія: *{streak} днів*\n🎁 Бонусних запитів: *+{bonus}*",
+        'profile_saved': "✅ Збережено!", 'profile_empty': "не вказано",
+        'btn_set_birthdate': "📅 Дата народження", 'btn_set_name': "✏️ Ім'я",
+        'btn_set_zodiac': "♈ Знак зодіаку", 'btn_set_gender': "⚧ Стать",
+        'btn_set_city': "🌆 Місто", 'btn_set_timezone': "🕐 Часовий пояс",
+        'btn_clear_profile': "🗑 Очистити профіль",
+        'set_gender_prompt': "⚧ *Вкажіть вашу стать:*",
+        'btn_gender_m': "👨 Чоловіча", 'btn_gender_f': "👩 Жіноча", 'btn_gender_o': "🌈 Інша",
+        'set_city_prompt': "🌆 *Введіть ваше місто:*\n\nНаприклад: _Київ_, _Харків_, _Одеса_",
+        'set_timezone_prompt': "🕐 *Введіть ваш часовий пояс:*\n\nНаприклад: _UTC+2_, _UTC+3_",
+        'history_item_btn': "🔸 {title} | {date}",
+        'streak_bonus': "🔥 *{days}-денна серія!*\n\nЗа вірність Містрі — *+1 безкоштовний запит* у подарунок! 🎁",
+        'banned_msg': "⛔ Ваш акаунт заблоковано. Зверніться до технічної підтримки.",
+        'days': ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"],
+        'broadcast_morning': "🌅 *Доброго ранку! Карта дня — {date}*",
+        'broadcast_sub_hint': "_💎 Підпишіться для розгорнутих інтерпретацій_",
+        'error': "⚠️ Сталася помилка при зверненні до оракула. Спробуйте пізніше.",
+        'unknown_cmd': "❓ Не зрозумів команду. Скористайтеся меню.",
+        'horo_period': {"day": "на сьогодні", "week": "на тиждень", "month": "на місяць"},
+        'invoice_title': "Підписка Містра — 30 днів",
+        'invoice_desc': "Безлімітний доступ до всіх функцій бота на 30 днів",
+        'payment_unavail': "Оплата карткою тимчасово недоступна",
+        'btn_refund': "💳 Повернення коштів",
+        'refund_request_msg': "💳 *Запит повернення коштів*\n\nПідтвердити повернення?",
+        'refund_no_payment': "❌ Повернення недоступне\n\nЗверніться до підтримки: @{support}",
+        'refund_success': "✅ Повернення оформлено!\n\nКошти повернуться протягом 5-10 робочих днів.\nПідписку скасовано.",
+        'refund_error': "❌ Не вдалося оформити повернення.\n\nЗверніться до підтримки: @{support}",
+        'btn_refund_confirm': "✅ Так, повернути кошти",
+        'btn_refund_cancel': "❌ Скасувати",
+        'btn_my_stats': "📊 Моя статистика",
+        'btn_my_payments': "📜 Історія платежів",
+        'btn_delete_account': "🗑 Видалити акаунт",
+        'btn_notify_time': "⏰ Час розсилки",
+        'my_stats_title': "📊 *Ваша статистика*\n\n📆 У боті з: *{since}*\n🔢 Всього розкладів: *{total}*\n🏆 Улюблений тип: *{fav}*\n🔥 Серія: *{streak} днів*\n👥 Запрошено друзів: *{refs}*\n🎁 Бонусних запитів: *+{bonus}*",
+        'my_payments_title': "📜 *Історія платежів*\n\n",
+        'my_payments_empty': "📜 *Історія платежів*\n\nПлатежів не знайдено.",
+        'delete_account_confirm_msg': "🗑 *Видалення акаунту*\n\n⚠️ Ця дія *незворотна*!\n\nБудуть видалені:\n• Профіль і особисті дані\n• Історія розкладів\n• Підписка і бонуси\n• Реферальна статистика\n\nВи впевнені?",
+        'delete_account_done': "✅ *Дані видалено*\n\nВаш акаунт та всі дані успішно видалено.",
+        'btn_delete_confirm': "⚠️ Так, видалити все",
+        'notify_time_title': "⏰ *Час розсилки*\n\nОберіть годину відправки карти дня (московський час):\n\nПоточний: *{hour}:00 МСК*",
+        'notify_time_set': "✅ Час розсилки: *{hour}:00 МСК*",
+    },
+    'tr': {
+        'choose_lang': "🌐 Dil seçiniz / Choose language:",
+        'welcome': "🔮 *Mystra'nın dünyasına hoş geldiniz*\n\nGerçek bir tarot okuyucusu gibi tam okuma. Kartlar rastgele karılır — Yapay Zeka burcunuzu ve sorunuzu dikkate alarak okumanızı yapar.\n\n🎴 Tarot · ❤️ Aşk · 💼 Kariyer\n🔢 Numeroloji · 🪨 Runlar · 🖐 El Falı\n🌙 Ay · 📅 Burç · 💭 Rüya\n\n_İlk 5 okuma ücretsiz._",
+        'terms_accept_btn': "✅ Kabul Ediyorum",
+        'terms_view_btn': "📜 Sözleşme",
+        'terms_read_btn': "🌐 Sitede Oku",
+        'main_menu_title': "🔮 *Ana Menü*\n\nİlgilendiğinizi seçin:",
+        'btn_tarot': "🎴 Tarot", 'btn_love': "❤️ Aşk",
+        'btn_numerology': "🔢 Numeroloji", 'btn_horoscope': "📅 Burç",
+        'btn_moon': "🌙 Ay", 'btn_lucky': "🔑 Şans Sayısı",
+        'btn_ritual': "🌿 Günlük Ritüel", 'btn_week': "🃏 Hafta Kartı",
+        'btn_card_day': "🌟 Günün Kartı", 'btn_question': "❓ Soru Sor",
+        'btn_runes': "🪨 Runlar", 'btn_dream': "💭 Rüya Yorumu",
+        'btn_palmistry': "🖐 El Falı",
+        'btn_subscription': "💎 Abonelik", 'btn_promo': "🎟 Promosyon Kodu",
+        'btn_notifications': "🔔 Bildirimler", 'btn_referral': "👥 Referans",
+        'btn_profile': "👤 Profilim", 'btn_support': "🆘 Destek",
+        'btn_back': "◀️ Geri", 'btn_main_menu': "🏠 Ana Menü",
+        'btn_cancel': "✖️ İptal", 'btn_language': "🌐 Dil / Language",
+        'btn_readings_menu': "🔮 Fallar",
+        'btn_esoterics_menu': "✨ Numeroloji & Ezoterik",
+        'btn_account_menu': "👤 Hesap",
+        'readings_menu_title': "🔮 *Fallar*\n\nFal türünü seçin:",
+        'esoterics_menu_title': "✨ *Numeroloji & Ezoterik*\n\nBölüm seçin:",
+        'account_menu_title': "👤 *Hesap*\n\nBölüm seçin:",
+        'btn_tarot_cc': "✡️ Keltik Haç (10 kart)", 'btn_tarot_yn': "☯️ Evet / Hayır",
+        'btn_career': "💼 Kariyer", 'btn_card_year': "🗓 Yılın Kartı",
+        'btn_my_horo': "♈ Burç Falım", 'btn_history': "📜 Okuma Geçmişi",
+        'btn_tarot_library': "📚 Tarot Kütüphanesi", 'btn_gift_sub': "🎁 Abonelik Hediye Et",
+        'btn_career_money': "💰 Para & Finans", 'btn_career_job': "💼 Kariyer / İş",
+        'btn_career_biz': "🚀 İş & Projeler",
+        'career_menu_title': "💼 *Kariyer & Para*\n\nKonu seçin:",
+        'tarot_cc_prompt': "✡️ *Keltik Haç (10 kart)*\n\nDurumu açıklayın veya ana sorunuzu sorun:",
+        'tarot_yn_prompt': "☯️ *Evet mi Hayır mı?*\n\nSorunuzu net bir şekilde ifade edin:",
+        'career_money_prompt': "💰 *Para & Finans*\n\nDurumu açıklayın veya soru sorun:",
+        'career_job_prompt': "💼 *Kariyer & İş*\n\nDurumu açıklayın veya soru sorun:",
+        'career_biz_prompt': "🚀 *İş & Projeler*\n\nİşinizi veya projenizi açıklayın:",
+        'card_year_prompt': "🗓 *Yılın Kartı*\n\nDoğum tarihinizi girin *GG.AA.YYYY*:\n\n_Veya profilinizde belirtin — kart hemen açılır._",
+        'tarot_library_prompt': "📚 *Tarot Kütüphanesi*\n\nKart adı veya konu yazın:",
+        'history_title': "📜 *Okuma Geçmişi*\n\n",
+        'history_empty': "📜 *Okuma Geçmişi*\n\nHenüz kaydedilmiş okumanız yok.\n\nİlk falınıza bakın! 🔮",
+        'moon_new_msg': "🌑 *Yeni Ay*\n\nYeni başlangıçların zamanı!\n\nBugün dilek tutmak ve hedef koymak için güçlü enerji var. 🌙",
+        'moon_full_msg': "🌕 *Dolunay*\n\nKulminasyon ve tamamlanma zamanı!\n\nBugün sezgiler keskin, duygular zirveye ulaştı. ✨",
+        'inactive_reminder': "🔮 *Mystra sizi özlüyor...*\n\nBirkaç gündür uğramadınız. Kartlar bekliyor — belki bugün tam zamanıdır. 🌟",
+        'gift_sub_created': "🎁 *Hediye promosyon kodu oluşturuldu!*\n\nBu kodu arkadaşınıza gönderin:\n\n`{code}`\n\n*30 gün* Mystra aboneliği verir. ✨",
+        'gift_sub_btn': "🎁 Arkadaşa abonelik hediye et — {stars} Stars",
+        'tarot_menu_title': "🎴 *Tarot Yayılımları*\n\nYayılım türünü seçin:",
+        'btn_tarot1': "🃏 1 kart — hızlı cevap",
+        'btn_tarot3': "🎴 3 kart — Geçmiş/Şimdiki/Gelecek",
+        'btn_tarot5': "🔮 5 kart — Durum yayılımı",
+        'love_menu_title': "❤️ *Aşk & İlişkiler*\n\nYayılım seçin:",
+        'btn_love_thinking': "💭 O/She beni düşünüyor mu?",
+        'btn_love_couple': "💑 Çift yayılımı",
+        'btn_love_continue': "🤔 Devam etmeli miyim?",
+        'btn_love_future': "🔮 İlişkinin geleceği",
+        'num_menu_title': "🔢 *Numeroloji*\n\nYöntem seçin:",
+        'btn_num_date': "📅 Doğum tarihine göre", 'btn_num_name': "✏️ İsme göre",
+        'btn_natal': "🌠 Doğum Haritası", 'btn_compat': "💑 Çift Uyumu",
+        'btn_num_fate': "🔮 Kader Sayısı", 'btn_num_square': "📊 Pisagor Karesi",
+        'btn_num_address': "🏠 Adres Numerolojisi", 'btn_num_year': "🗓 Kişisel Yıl",
+        'btn_num_trio': "👨‍👩‍👦 İlişki Üçgeni", 'btn_num_biz': "💼 İş Numerolojisi",
+        'btn_page_next': "➡️ Sonraki sayfa", 'btn_page_prev': "⬅️ Önceki sayfa",
+        'num_fate_prompt': "🔮 *Kader Sayısı*\n\nTam adınızı ve doğum tarihinizi girin:",
+        'num_square_prompt': "📊 *Pisagor Karesi*\n\nDoğum tarihinizi girin: *GG.AA.YYYY*",
+        'num_address_prompt': "🏠 *Adres Numerolojisi*\n\nAdresinizi girin:",
+        'num_year_prompt': "🗓 *Kişisel Yıl*\n\nDoğum tarihinizi girin: *GG.AA.YYYY*",
+        'num_trio_prompt': "👨‍👩‍👦 *İlişki Üçgeni*\n\nÜç doğum tarihini virgülle girin:",
+        'num_biz_prompt': "💼 *İş Numerolojisi*\n\nŞirket adını ve kuruluş tarihini girin:",
+        'horoscope_title': "📅 *Burç*\n\nBurcu seçin:",
+        'btn_horo_day': "☀️ Bugün", 'btn_horo_week': "📅 Bu hafta", 'btn_horo_month': "🌙 Bu ay",
+        'rune_menu_title': "🪨 *Run Yayılımı*\n\nTür seçin:",
+        'btn_rune1': "🪨 1 run — soruya cevap", 'btn_rune3': "🪨 3 run — durum yayılımı",
+        'tarot1_prompt': "🃏 *1 Kart Yayılımı*\n\nSorunuzu formüle edin:\n\n_Ne kadar net, o kadar derin cevap._",
+        'tarot3_prompt': "🎴 *Geçmiş / Şimdiki / Gelecek*\n\nDurumu açıklayın veya soru sorun:",
+        'tarot5_prompt': "🔮 *Durum Yayılımı (5 kart)*\n\nDurumu veya soruyu detaylı açıklayın:",
+        'num_date_prompt': "📅 *Doğum Tarihi Numerolojisi*\n\nTarihi girin: *GG.AA.YYYY*",
+        'num_name_prompt': "✏️ *İsim Numerolojisi*\n\nTam adınızı girin:",
+        'natal_prompt': "🌠 *Doğum Haritası*\n\nGirin: *GG.AA.YYYY SS:DD Şehir*\n\nSaat bilinmiyorsa 00:00 yazın",
+        'compat_prompt': "💑 *Çift Uyumu*\n\nİki tarihi virgülle girin:",
+        'free_question_prompt': "❓ *Mystra'ya Soru*\n\nTarot, Numeroloji veya ezoterik hakkında herhangi bir soru sorun:",
+        'love_thinking_prompt': "💭 *O/She beni düşünüyor mu?*\n\nKişiyi ve durumu açıklayın:",
+        'love_couple_prompt': "💑 *Çift Yayılımı*\n\nİlişki durumunuzu açıklayın:",
+        'love_continue_prompt': "🤔 *Devam etmeli miyim?*\n\nİlişkiyi ve endişelerinizi açıklayın:",
+        'love_future_prompt': "🔮 *İlişkinin Geleceği*\n\nİlişkinizi açıklayın:",
+        'rune1_prompt': "🪨 *1 Run*\n\nSorunuzu formüle edin:",
+        'rune3_prompt': "🪨 *3 Run*\n\nDurumu açıklayın:",
+        'palmistry_prompt': "🖐 *El Falı*\n\nAvucunuzun (baskın elinizin) fotoğrafını gönderin.\n\n_Avucunuzun iyi aydınlatıldığından emin olun._",
+        'palmistry_no_photo': "📷 Lütfen *avuç fotoğrafı* gönderin (metin değil).",
+        'reading_palm': "🖐 Avucunuzun çizgilerini okuyorum...",
+        'dream_prompt': "💭 *Rüya Yorumu*\n\nRüyanızı detaylı anlatın:",
+        'promo_prompt': "🎟 *Promosyon Kodu*\n\nPromosyon kodunu girin:",
+        'profile_birthdate_prompt': "📅 Doğum tarihinizi girin: *GG.AA.YYYY*",
+        'profile_name_prompt': "✏️ Tam adınızı girin:",
+        'processing': "🔮 Mystra işaretleri okuyor...",
+        'pulling_card': "🌟 Günün kartını çekiyorum...",
+        'reading_moon': "🌙 Ay takvimini okuyorum...",
+        'finding_ritual': "🌿 Günlük ritüeli seçiyorum...",
+        'calc_lucky': "🔑 Şans sayısını hesaplıyorum...",
+        'spreading_week': "🃏 Haftalık kartları açıyorum...",
+        'reading_horo': "📅 {sign} için burç okuyorum...",
+        'notif_status': "🔔 *Günlük Bildirim*\n\nDurum: *{status}*\n\n{desc}",
+        'notif_enabled': "✅ Açık", 'notif_disabled': "❌ Kapalı",
+        'notif_on_msg': "🔔 Bildirimler açıldı! Her sabah 8:00'de günün kartı gelecek.",
+        'notif_off_msg': "🔕 Bildirimler kapatıldı.",
+        'btn_notif_on': "🔔 Aç", 'btn_notif_off': "🔕 Kapat",
+        'notif_desc': "Her sabah *8:00*'de Mystra günün kartını gönderir.\nAboneler detaylı yorum alır.",
+        'paywall': "🔒 *Ücretsiz kullanım limitine ulaştınız*\n\n{free} ücretsiz isteğinizi kullandınız.\n\n*30 günlük abonelik — {stars} ⭐*\n• Sınırsız Tarot ve Numeroloji\n• Burç, Ay, Ritüeller, Hafta Kartı\n• Aşk yayılımları ve daha fazlası",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
+        'btn_buy_card': "💳 Visa / Mastercard — $4.99",
+        'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
+        'sub_active': "💎 *Aboneliğiniz*\n\n✅ Geçerli: *{date}* tarihine kadar\n📊 İstekler: *{count}*\n🔥 Seri: *{streak} gün*\n\nSınırsız erişimin tadını çıkarın! 🔮",
+        'sub_inactive': "💎 *Mystra Aboneliği*\n\n🆓 Kalan ücretsiz: *{remaining}/{free}*\n🔥 Seri: *{streak} gün*\n\n*Abonelik içerir:*\n• Tarot, Numeroloji, Doğum Haritası\n• Burç, Ay, Ritüeller, Runlar\n• Aşk yayılımları\n\n💰 *{stars} Telegram Stars* / 30 gün",
+        'sub_activated': "✅ *Abonelik aktifleştirildi!*\n\n🔮 Mystra'nın sonsuz dünyasına hoş geldiniz!\n📅 Geçerlilik: *{date}*\n\nSınırsız yayılım yapın! 🌟",
+        'support_text': "🆘 *Teknik Destek*\n\nSorun yaşıyorsanız bize yazın:\n\n👤 @{username}\n\nEn kısa sürede yanıtlayacağız! ⚡",
+        'referral_text': "👥 *Referans Programı*\n\nArkadaşlarınızı davet edin, her biri için *+1 ücretsiz istek* kazanın!\n\n🔗 *Linkiniz:*\n`{link}`\n\n👥 Davet edilen: *{count}*\n🎁 Bonus istekler: *+{bonus}*",
+        'btn_share_referral': "📤 Linki paylaş",
+        'referral_bonus_msg': "🎁 *Bonus!* {name} linkiniz üzerinden katıldı. +1 ücretsiz istek!",
+        'share_text': "Bu botu deneyin — Tarot falı ve numeroloji!",
+        'promo_success': "✅ *Promosyon kodu aktifleştirildi!*\n\nAbonelik *{days} gün* uzatıldı. 🎉",
+        'promo_invalid': "❌ Promosyon kodu bulunamadı.", 'promo_used': "❌ Bu kodu zaten kullandınız.",
+        'promo_exhausted': "❌ Promosyon kodu artık geçerli değil.",
+        'profile_title': "👤 *Profiliniz*\n\n✏️ Ad: *{name}*\n📅 Doğum tarihi: *{birth}*\n♈ Burç: *{zodiac}*\n⚧ Cinsiyet: *{gender}*\n🌆 Şehir: *{city}*\n🕐 Saat dilimi: *{timezone}*\n🔥 Seri: *{streak} gün*\n🎁 Bonus istekler: *+{bonus}*",
+        'profile_saved': "✅ Kaydedildi!", 'profile_empty': "belirtilmemiş",
+        'btn_set_birthdate': "📅 Doğum tarihi", 'btn_set_name': "✏️ Ad",
+        'btn_set_zodiac': "♈ Burç", 'btn_set_gender': "⚧ Cinsiyet",
+        'btn_set_city': "🌆 Şehir", 'btn_set_timezone': "🕐 Saat dilimi",
+        'btn_clear_profile': "🗑 Profili temizle",
+        'set_gender_prompt': "⚧ *Cinsiyetinizi seçin:*",
+        'btn_gender_m': "👨 Erkek", 'btn_gender_f': "👩 Kadın", 'btn_gender_o': "🌈 Diğer",
+        'set_city_prompt': "🌆 *Şehrinizi girin:*\n\nÖrnek: _İstanbul_, _Ankara_, _İzmir_",
+        'set_timezone_prompt': "🕐 *Saat diliminizi girin:*\n\nÖrnek: _UTC+3_",
+        'history_item_btn': "🔸 {title} | {date}",
+        'streak_bonus': "🔥 *{days} günlük seri!*\n\nMystra'ya sadakatin için — *+1 ücretsiz istek* hediye! 🎁",
+        'banned_msg': "⛔ Hesabınız engellendi. Teknik destek ile iletişime geçin.",
+        'days': ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
+        'broadcast_morning': "🌅 *Günaydın! Günün kartı — {date}*",
+        'broadcast_sub_hint': "_💎 Detaylı yorumlar için abone olun_",
+        'error': "⚠️ Oracle'a erişimde hata oluştu. Lütfen daha sonra tekrar deneyin.",
+        'unknown_cmd': "❓ Komut anlaşılmadı. Lütfen menüyü kullanın.",
+        'horo_period': {"day": "bugün", "week": "bu hafta", "month": "bu ay"},
+        'invoice_title': "Mystra Aboneliği — 30 gün",
+        'invoice_desc': "30 gün boyunca tüm bot özelliklerine sınırsız erişim",
+        'payment_unavail': "Kart ödemesi geçici olarak kullanılamıyor",
+        'btn_refund': "💳 Para iadesi",
+        'refund_request_msg': "💳 *Para İadesi Talebi*\n\nİadeyi onaylamak istiyor musunuz?",
+        'refund_no_payment': "❌ İade mevcut değil\n\nDestek ile iletişime geçin: @{support}",
+        'refund_success': "✅ İade işleme alındı!\n\nPara 5-10 iş günü içinde iade edilir.\nAbonelik iptal edildi.",
+        'refund_error': "❌ İade otomatik olarak gerçekleştirilemedi.\n\nDestek: @{support}",
+        'btn_refund_confirm': "✅ Evet, iade et",
+        'btn_refund_cancel': "❌ İptal",
+        'btn_my_stats': "📊 İstatistiklerim",
+        'btn_my_payments': "📜 Ödeme geçmişi",
+        'btn_delete_account': "🗑 Hesabı sil",
+        'btn_notify_time': "⏰ Bildirim saati",
+        'my_stats_title': "📊 *İstatistikleriniz*\n\n📆 Botta: *{since}* tarihinden beri\n🔢 Toplam okuma: *{total}*\n🏆 Favori tür: *{fav}*\n🔥 Seri: *{streak} gün*\n👥 Davet edilen: *{refs}*\n🎁 Bonus istekler: *+{bonus}*",
+        'my_payments_title': "📜 *Ödeme Geçmişi*\n\n",
+        'my_payments_empty': "📜 *Ödeme Geçmişi*\n\nÖdeme bulunamadı.",
+        'delete_account_confirm_msg': "🗑 *Hesap Silme*\n\n⚠️ Bu işlem *geri alınamaz*!\n\nSilinecekler:\n• Profil ve kişisel veriler\n• Okuma geçmişi\n• Abonelik ve bonuslar\n• Referans istatistikleri\n\nEmin misiniz?",
+        'delete_account_done': "✅ *Veriler silindi*\n\nHesabınız ve tüm verileriniz başarıyla silindi.",
+        'btn_delete_confirm': "⚠️ Evet, her şeyi sil",
+        'notify_time_title': "⏰ *Bildirim Saati*\n\nGünlük kartın gönderim saatini seçin (Moskova saati):\n\nMevcut: *{hour}:00 MSK*",
+        'notify_time_set': "✅ Bildirim saati: *{hour}:00 MSK*",
+    },
+    'es': {
+        'choose_lang': "🌐 Elige idioma / Choose language:",
+        'welcome': "🔮 *Bienvenido al mundo de Mystra*\n\nUna lectura completa como la de un tarotista real. Las cartas se barajan aleatoriamente — la IA lee exactamente tu tirada considerando tu signo y pregunta.\n\n🎴 Tarot · ❤️ Amor · 💼 Carrera\n🔢 Numerología · 🪨 Runas · 🖐 Quiromancia\n🌙 Luna · 📅 Horóscopo · 💭 Sueños\n\n_Las primeras 5 lecturas son gratis._",
+        'terms_accept_btn': "✅ Acepto",
+        'terms_view_btn': "📜 Acuerdo",
+        'terms_read_btn': "🌐 Leer en el sitio",
+        'main_menu_title': "🔮 *Menú Principal*\n\nElige lo que te interesa:",
+        'btn_tarot': "🎴 Tarot", 'btn_love': "❤️ Amor",
+        'btn_numerology': "🔢 Numerología", 'btn_horoscope': "📅 Horóscopo",
+        'btn_moon': "🌙 Luna", 'btn_lucky': "🔑 Número de la suerte",
+        'btn_ritual': "🌿 Ritual del día", 'btn_week': "🃏 Carta de la semana",
+        'btn_card_day': "🌟 Carta del día", 'btn_question': "❓ Hacer pregunta",
+        'btn_runes': "🪨 Runas", 'btn_dream': "💭 Interpretación de sueño",
+        'btn_palmistry': "🖐 Quiromancia",
+        'btn_subscription': "💎 Suscripción", 'btn_promo': "🎟 Código promo",
+        'btn_notifications': "🔔 Notificaciones", 'btn_referral': "👥 Referidos",
+        'btn_profile': "👤 Mi perfil", 'btn_support': "🆘 Soporte",
+        'btn_back': "◀️ Atrás", 'btn_main_menu': "🏠 Menú principal",
+        'btn_cancel': "✖️ Cancelar", 'btn_language': "🌐 Idioma / Language",
+        'btn_readings_menu': "🔮 Lecturas",
+        'btn_esoterics_menu': "✨ Numerología & Esotérico",
+        'btn_account_menu': "👤 Cuenta",
+        'readings_menu_title': "🔮 *Lecturas*\n\nElige el tipo de lectura:",
+        'esoterics_menu_title': "✨ *Numerología & Esotérico*\n\nElige una sección:",
+        'account_menu_title': "👤 *Cuenta*\n\nElige una sección:",
+        'btn_tarot_cc': "✡️ Cruz Celta (10 cartas)", 'btn_tarot_yn': "☯️ Sí / No",
+        'btn_career': "💼 Carrera", 'btn_card_year': "🗓 Carta del año",
+        'btn_my_horo': "♈ Mi horóscopo", 'btn_history': "📜 Historial de lecturas",
+        'btn_tarot_library': "📚 Biblioteca Tarot", 'btn_gift_sub': "🎁 Regalar suscripción",
+        'btn_career_money': "💰 Dinero & finanzas", 'btn_career_job': "💼 Carrera / Trabajo",
+        'btn_career_biz': "🚀 Negocios & proyectos",
+        'career_menu_title': "💼 *Carrera & Dinero*\n\nElige un tema:",
+        'tarot_cc_prompt': "✡️ *Cruz Celta (10 cartas)*\n\nDescribe la situación o haz tu pregunta principal:",
+        'tarot_yn_prompt': "☯️ *¿Sí o No?*\n\nFormula tu pregunta claramente:",
+        'career_money_prompt': "💰 *Dinero & Finanzas*\n\nDescribe la situación o haz una pregunta:",
+        'career_job_prompt': "💼 *Carrera & Trabajo*\n\nDescribe la situación o haz una pregunta:",
+        'career_biz_prompt': "🚀 *Negocios & Proyectos*\n\nDescribe tu negocio o proyecto:",
+        'card_year_prompt': "🗓 *Carta del año*\n\nIngresa tu fecha de nacimiento *DD.MM.AAAA*:\n\n_O indícala en tu perfil — la carta se abrirá de inmediato._",
+        'tarot_library_prompt': "📚 *Biblioteca Tarot*\n\nEscribe el nombre de una carta o tema:",
+        'history_title': "📜 *Historial de lecturas*\n\n",
+        'history_empty': "📜 *Historial de lecturas*\n\nAún no tienes lecturas guardadas.\n\n¡Haz tu primera tirada! 🔮",
+        'moon_new_msg': "🌑 *Luna Nueva*\n\n¡Es tiempo de nuevos comienzos!\n\nHoy hay energía poderosa para pedir deseos y establecer metas. 🌙",
+        'moon_full_msg': "🌕 *Luna Llena*\n\n¡Tiempo de culminación y conclusión!\n\nHoy la intuición está agudizada, las emociones en su punto máximo. ✨",
+        'inactive_reminder': "🔮 *Mystra te extraña...*\n\nLlevas varios días sin visitarnos. Las cartas esperan — quizás hoy es el día. 🌟",
+        'gift_sub_created': "🎁 *¡Código de regalo creado!*\n\nEnvía este código a tu amigo:\n\n`{code}`\n\nOfrece *30 días* de suscripción a Mystra. ✨",
+        'gift_sub_btn': "🎁 Regalar suscripción — {stars} Stars",
+        'tarot_menu_title': "🎴 *Tiradas de Tarot*\n\nElige el tipo de tirada:",
+        'btn_tarot1': "🃏 1 carta — respuesta rápida",
+        'btn_tarot3': "🎴 3 cartas — Pasado/Presente/Futuro",
+        'btn_tarot5': "🔮 5 cartas — Tirada de situación",
+        'love_menu_title': "❤️ *Amor & Relaciones*\n\nElige una tirada:",
+        'btn_love_thinking': "💭 ¿Piensa él/ella en mí?",
+        'btn_love_couple': "💑 Tirada de pareja",
+        'btn_love_continue': "🤔 ¿Vale la pena continuar?",
+        'btn_love_future': "🔮 Futuro de la relación",
+        'num_menu_title': "🔢 *Numerología*\n\nElige un método:",
+        'btn_num_date': "📅 Por fecha de nacimiento", 'btn_num_name': "✏️ Por nombre",
+        'btn_natal': "🌠 Carta natal", 'btn_compat': "💑 Compatibilidad",
+        'btn_num_fate': "🔮 Número del destino", 'btn_num_square': "📊 Cuadrado Pitagórico",
+        'btn_num_address': "🏠 Numerología de dirección", 'btn_num_year': "🗓 Año personal",
+        'btn_num_trio': "👨‍👩‍👦 Triángulo de relaciones", 'btn_num_biz': "💼 Numerología de negocios",
+        'btn_page_next': "➡️ Siguiente página", 'btn_page_prev': "⬅️ Página anterior",
+        'num_fate_prompt': "🔮 *Número del Destino*\n\nIngresa nombre completo y fecha de nacimiento:",
+        'num_square_prompt': "📊 *Cuadrado Pitagórico*\n\nIngresa fecha de nacimiento: *DD.MM.AAAA*",
+        'num_address_prompt': "🏠 *Numerología de Dirección*\n\nIngresa tu dirección:",
+        'num_year_prompt': "🗓 *Año Personal*\n\nIngresa fecha de nacimiento: *DD.MM.AAAA*",
+        'num_trio_prompt': "👨‍👩‍👦 *Triángulo de Relaciones*\n\nIngresa tres fechas separadas por comas:",
+        'num_biz_prompt': "💼 *Numerología de Negocios*\n\nIngresa nombre de empresa y fecha de fundación:",
+        'horoscope_title': "📅 *Horóscopo*\n\nElige tu signo:",
+        'btn_horo_day': "☀️ Hoy", 'btn_horo_week': "📅 Esta semana", 'btn_horo_month': "🌙 Este mes",
+        'rune_menu_title': "🪨 *Tirada de Runas*\n\nElige el tipo:",
+        'btn_rune1': "🪨 1 runa — respuesta a pregunta", 'btn_rune3': "🪨 3 runas — tirada de situación",
+        'tarot1_prompt': "🃏 *Tirada de 1 carta*\n\nFormula tu pregunta:\n\n_Cuanto más precisa, más profunda la respuesta._",
+        'tarot3_prompt': "🎴 *Pasado / Presente / Futuro*\n\nDescribe la situación o haz una pregunta:",
+        'tarot5_prompt': "🔮 *Tirada de situación (5 cartas)*\n\nDescribe detalladamente la situación o pregunta:",
+        'num_date_prompt': "📅 *Numerología por fecha*\n\nIngresa la fecha: *DD.MM.AAAA*",
+        'num_name_prompt': "✏️ *Numerología por nombre*\n\nIngresa tu nombre completo:",
+        'natal_prompt': "🌠 *Carta Natal*\n\nIngresa: *DD.MM.AAAA HH:MM Ciudad*\n\nSi no sabes la hora, pon 00:00",
+        'compat_prompt': "💑 *Compatibilidad*\n\nIngresa dos fechas separadas por coma:",
+        'free_question_prompt': "❓ *Pregunta a Mystra*\n\nHaz cualquier pregunta sobre Tarot, Numerología o esotérico:",
+        'love_thinking_prompt': "💭 *¿Piensa él/ella en mí?*\n\nDescribe a la persona y la situación:",
+        'love_couple_prompt': "💑 *Tirada de pareja*\n\nDescribe tu situación sentimental:",
+        'love_continue_prompt': "🤔 *¿Vale la pena continuar?*\n\nDescribe la relación y tus dudas:",
+        'love_future_prompt': "🔮 *Futuro de la relación*\n\nDescribe tu relación:",
+        'rune1_prompt': "🪨 *1 runa*\n\nFormula tu pregunta:",
+        'rune3_prompt': "🪨 *3 runas*\n\nDescribe la situación:",
+        'palmistry_prompt': "🖐 *Quiromancia*\n\nEnvía una foto de tu palma (mano dominante).\n\n_Asegúrate de que la palma esté bien iluminada._",
+        'palmistry_no_photo': "📷 Por favor envía una *foto de tu palma* (no texto).",
+        'reading_palm': "🖐 Leyendo las líneas de tu mano...",
+        'dream_prompt': "💭 *Interpretación de sueño*\n\nDescribe tu sueño detalladamente:",
+        'promo_prompt': "🎟 *Código Promo*\n\nIngresa el código promo:",
+        'profile_birthdate_prompt': "📅 Ingresa tu fecha de nacimiento: *DD.MM.AAAA*",
+        'profile_name_prompt': "✏️ Ingresa tu nombre completo:",
+        'processing': "🔮 Mystra lee los signos...",
+        'pulling_card': "🌟 Sacando la carta del día...",
+        'reading_moon': "🌙 Leyendo el calendario lunar...",
+        'finding_ritual': "🌿 Buscando el ritual del día...",
+        'calc_lucky': "🔑 Calculando el número de la suerte...",
+        'spreading_week': "🃏 Extendiendo las cartas de la semana...",
+        'reading_horo': "📅 Leyendo el horóscopo de {sign}...",
+        'notif_status': "🔔 *Notificación diaria*\n\nEstado: *{status}*\n\n{desc}",
+        'notif_enabled': "✅ Activada", 'notif_disabled': "❌ Desactivada",
+        'notif_on_msg': "🔔 ¡Notificaciones activadas! Cada mañana a las 8:00 recibirás la carta del día.",
+        'notif_off_msg': "🔕 Notificaciones desactivadas.",
+        'btn_notif_on': "🔔 Activar", 'btn_notif_off': "🔕 Desactivar",
+        'notif_desc': "Cada mañana a las *8:00* Mystra envía la carta del día.\nLos suscriptores reciben interpretación completa.",
+        'paywall': "🔒 *Límite de solicitudes gratuitas alcanzado*\n\nUsaste tus {free} solicitudes gratuitas.\n\n*Suscripción 30 días — {stars} ⭐*\n• Tarot y Numerología ilimitados\n• Horóscopo, Luna, Rituales, Carta semanal\n• Tiradas de amor y mucho más",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
+        'btn_buy_card': "💳 Visa / Mastercard — $4.99",
+        'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
+        'sub_active': "💎 *Tu suscripción*\n\n✅ Activa hasta: *{date}*\n📊 Solicitudes: *{count}*\n🔥 Racha: *{streak} días*\n\n¡Disfruta el acceso ilimitado! 🔮",
+        'sub_inactive': "💎 *Suscripción Mystra*\n\n🆓 Gratuitas restantes: *{remaining}/{free}*\n🔥 Racha: *{streak} días*\n\n*La suscripción incluye:*\n• Tarot, Numerología, Carta natal\n• Horóscopo, Luna, Rituales, Runas\n• Tiradas de amor\n\n💰 *{stars} Telegram Stars* / 30 días",
+        'sub_activated': "✅ *¡Suscripción activada!*\n\n🔮 ¡Bienvenido al mundo ilimitado de Mystra!\n📅 Válida hasta: *{date}*\n\n¡Haz tiradas ilimitadas! 🌟",
+        'support_text': "🆘 *Soporte Técnico*\n\nSi tienes problemas, escríbenos:\n\n👤 @{username}\n\n¡Te responderemos lo antes posible! ⚡",
+        'referral_text': "👥 *Programa de referidos*\n\n¡Invita amigos y gana *+1 solicitud gratis* por cada uno!\n\n🔗 *Tu enlace:*\n`{link}`\n\n👥 Amigos invitados: *{count}*\n🎁 Solicitudes bonus: *+{bonus}*",
+        'btn_share_referral': "📤 Compartir enlace",
+        'referral_bonus_msg': "🎁 *¡Bonus!* {name} se unió con tu enlace. +1 solicitud gratis!",
+        'share_text': "¡Prueba este bot — tarot y numerología!",
+        'promo_success': "✅ *¡Código promo activado!*\n\nSuscripción extendida *{days} días*. 🎉",
+        'promo_invalid': "❌ Código promo no encontrado.", 'promo_used': "❌ Ya usaste este código.",
+        'promo_exhausted': "❌ El código promo ya no está disponible.",
+        'profile_title': "👤 *Tu perfil*\n\n✏️ Nombre: *{name}*\n📅 Fecha de nac.: *{birth}*\n♈ Signo: *{zodiac}*\n⚧ Género: *{gender}*\n🌆 Ciudad: *{city}*\n🕐 Zona horaria: *{timezone}*\n🔥 Racha: *{streak} días*\n🎁 Solicitudes bonus: *+{bonus}*",
+        'profile_saved': "✅ ¡Guardado!", 'profile_empty': "no indicado",
+        'btn_set_birthdate': "📅 Fecha de nacimiento", 'btn_set_name': "✏️ Nombre",
+        'btn_set_zodiac': "♈ Signo zodiacal", 'btn_set_gender': "⚧ Género",
+        'btn_set_city': "🌆 Ciudad", 'btn_set_timezone': "🕐 Zona horaria",
+        'btn_clear_profile': "🗑 Limpiar perfil",
+        'set_gender_prompt': "⚧ *Indica tu género:*",
+        'btn_gender_m': "👨 Masculino", 'btn_gender_f': "👩 Femenino", 'btn_gender_o': "🌈 Otro",
+        'set_city_prompt': "🌆 *Ingresa tu ciudad:*\n\nEjemplo: _Ciudad de México_, _Buenos Aires_, _Madrid_",
+        'set_timezone_prompt': "🕐 *Ingresa tu zona horaria:*\n\nEjemplo: _UTC-3_, _UTC-5_, _UTC+1_",
+        'history_item_btn': "🔸 {title} | {date}",
+        'streak_bonus': "🔥 *¡Racha de {days} días!*\n\nPor tu fidelidad a Mystra — *+1 solicitud gratis* de regalo! 🎁",
+        'banned_msg': "⛔ Tu cuenta ha sido bloqueada. Contacta al soporte técnico.",
+        'days': ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+        'broadcast_morning': "🌅 *¡Buenos días! Carta del día — {date}*",
+        'broadcast_sub_hint': "_💎 Suscríbete para interpretaciones detalladas_",
+        'error': "⚠️ Ocurrió un error al consultar el oráculo. Inténtalo más tarde.",
+        'unknown_cmd': "❓ Comando no entendido. Usa el menú.",
+        'horo_period': {"day": "hoy", "week": "esta semana", "month": "este mes"},
+        'invoice_title': "Suscripción Mystra — 30 días",
+        'invoice_desc': "Acceso ilimitado a todas las funciones del bot por 30 días",
+        'payment_unavail': "El pago con tarjeta no está disponible temporalmente",
+        'btn_refund': "💳 Reembolso",
+        'refund_request_msg': "💳 *Solicitud de reembolso*\n\n¿Confirmar reembolso?",
+        'refund_no_payment': "❌ Reembolso no disponible\n\nContacta soporte: @{support}",
+        'refund_success': "✅ ¡Reembolso procesado!\n\nEl dinero regresará en 5-10 días hábiles.\nSuscripción cancelada.",
+        'refund_error': "❌ No se pudo procesar el reembolso.\n\nContacta soporte: @{support}",
+        'btn_refund_confirm': "✅ Sí, reembolsar",
+        'btn_refund_cancel': "❌ Cancelar",
+        'btn_my_stats': "📊 Mis estadísticas",
+        'btn_my_payments': "📜 Historial de pagos",
+        'btn_delete_account': "🗑 Eliminar cuenta",
+        'btn_notify_time': "⏰ Hora de notificación",
+        'my_stats_title': "📊 *Tus estadísticas*\n\n📆 En el bot desde: *{since}*\n🔢 Total de lecturas: *{total}*\n🏆 Tipo favorito: *{fav}*\n🔥 Racha: *{streak} días*\n👥 Amigos invitados: *{refs}*\n🎁 Solicitudes bonus: *+{bonus}*",
+        'my_payments_title': "📜 *Historial de pagos*\n\n",
+        'my_payments_empty': "📜 *Historial de pagos*\n\nNo se encontraron pagos.",
+        'delete_account_confirm_msg': "🗑 *Eliminar cuenta*\n\n⚠️ ¡Esta acción es *irreversible*!\n\nSe eliminará:\n• Perfil y datos personales\n• Historial de lecturas\n• Suscripción y bonos\n• Estadísticas de referidos\n\n¿Estás seguro?",
+        'delete_account_done': "✅ *Datos eliminados*\n\nTu cuenta y todos tus datos fueron eliminados exitosamente.",
+        'btn_delete_confirm': "⚠️ Sí, eliminar todo",
+        'notify_time_title': "⏰ *Hora de notificación*\n\nElige la hora del envío de la carta diaria (hora de Moscú):\n\nActual: *{hour}:00 MSK*",
+        'notify_time_set': "✅ Hora de notificación: *{hour}:00 MSK*",
+    },
+    'pt': {
+        'choose_lang': "🌐 Escolha o idioma / Choose language:",
+        'welcome': "🔮 *Bem-vindo ao mundo de Mystra*\n\nUma leitura completa como a de um tarólogo real. As cartas são embaralhadas aleatoriamente — a IA lê exatamente sua tiragem considerando seu signo e pergunta.\n\n🎴 Tarot · ❤️ Amor · 💼 Carreira\n🔢 Numerologia · 🪨 Runas · 🖐 Quiromancia\n🌙 Lua · 📅 Horóscopo · 💭 Sonhos\n\n_As primeiras 5 leituras são gratuitas._",
+        'terms_accept_btn': "✅ Aceito",
+        'terms_view_btn': "📜 Acordo",
+        'terms_read_btn': "🌐 Ler no site",
+        'main_menu_title': "🔮 *Menu Principal*\n\nEscolha o que te interessa:",
+        'btn_tarot': "🎴 Tarot", 'btn_love': "❤️ Amor",
+        'btn_numerology': "🔢 Numerologia", 'btn_horoscope': "📅 Horóscopo",
+        'btn_moon': "🌙 Lua", 'btn_lucky': "🔑 Número da sorte",
+        'btn_ritual': "🌿 Ritual do dia", 'btn_week': "🃏 Carta da semana",
+        'btn_card_day': "🌟 Carta do dia", 'btn_question': "❓ Fazer pergunta",
+        'btn_runes': "🪨 Runas", 'btn_dream': "💭 Interpretação de sonho",
+        'btn_palmistry': "🖐 Quiromancia",
+        'btn_subscription': "💎 Assinatura", 'btn_promo': "🎟 Código promo",
+        'btn_notifications': "🔔 Notificações", 'btn_referral': "👥 Indicação",
+        'btn_profile': "👤 Meu perfil", 'btn_support': "🆘 Suporte",
+        'btn_back': "◀️ Voltar", 'btn_main_menu': "🏠 Menu principal",
+        'btn_cancel': "✖️ Cancelar", 'btn_language': "🌐 Idioma / Language",
+        'btn_readings_menu': "🔮 Leituras",
+        'btn_esoterics_menu': "✨ Numerologia & Esotérico",
+        'btn_account_menu': "👤 Conta",
+        'readings_menu_title': "🔮 *Leituras*\n\nEscolha o tipo de leitura:",
+        'esoterics_menu_title': "✨ *Numerologia & Esotérico*\n\nEscolha uma seção:",
+        'account_menu_title': "👤 *Conta*\n\nEscolha uma seção:",
+        'btn_tarot_cc': "✡️ Cruz Celta (10 cartas)", 'btn_tarot_yn': "☯️ Sim / Não",
+        'btn_career': "💼 Carreira", 'btn_card_year': "🗓 Carta do ano",
+        'btn_my_horo': "♈ Meu horóscopo", 'btn_history': "📜 Histórico de leituras",
+        'btn_tarot_library': "📚 Biblioteca Tarot", 'btn_gift_sub': "🎁 Presentear assinatura",
+        'btn_career_money': "💰 Dinheiro & finanças", 'btn_career_job': "💼 Carreira / Trabalho",
+        'btn_career_biz': "🚀 Negócios & projetos",
+        'career_menu_title': "💼 *Carreira & Dinheiro*\n\nEscolha um tema:",
+        'tarot_cc_prompt': "✡️ *Cruz Celta (10 cartas)*\n\nDescreva a situação ou faça sua pergunta principal:",
+        'tarot_yn_prompt': "☯️ *Sim ou Não?*\n\nFormule sua pergunta claramente:",
+        'career_money_prompt': "💰 *Dinheiro & Finanças*\n\nDescreva a situação ou faça uma pergunta:",
+        'career_job_prompt': "💼 *Carreira & Trabalho*\n\nDescreva a situação ou faça uma pergunta:",
+        'career_biz_prompt': "🚀 *Negócios & Projetos*\n\nDescreva seu negócio ou projeto:",
+        'card_year_prompt': "🗓 *Carta do ano*\n\nDigite sua data de nascimento *DD.MM.AAAA*:\n\n_Ou indique no perfil — a carta abrirá imediatamente._",
+        'tarot_library_prompt': "📚 *Biblioteca Tarot*\n\nEscreva o nome de uma carta ou tema:",
+        'history_title': "📜 *Histórico de leituras*\n\n",
+        'history_empty': "📜 *Histórico de leituras*\n\nVocê ainda não tem leituras salvas.\n\nFaça sua primeira tiragem! 🔮",
+        'moon_new_msg': "🌑 *Lua Nova*\n\nTempo de novos começos!\n\nHoje há energia poderosa para fazer desejos e definir metas. 🌙",
+        'moon_full_msg': "🌕 *Lua Cheia*\n\nTempo de culminação e conclusão!\n\nHoje a intuição está aguçada, emoções no pico. ✨",
+        'inactive_reminder': "🔮 *Mystra sente sua falta...*\n\nFaz alguns dias que você não aparece. As cartas esperam — talvez hoje seja o dia. 🌟",
+        'gift_sub_created': "🎁 *Código de presente criado!*\n\nEnvie este código para seu amigo:\n\n`{code}`\n\nDá *30 dias* de assinatura Mystra. ✨",
+        'gift_sub_btn': "🎁 Presentear assinatura — {stars} Stars",
+        'tarot_menu_title': "🎴 *Tiragens de Tarot*\n\nEscolha o tipo de tiragem:",
+        'btn_tarot1': "🃏 1 carta — resposta rápida",
+        'btn_tarot3': "🎴 3 cartas — Passado/Presente/Futuro",
+        'btn_tarot5': "🔮 5 cartas — Tiragem de situação",
+        'love_menu_title': "❤️ *Amor & Relacionamentos*\n\nEscolha uma tiragem:",
+        'btn_love_thinking': "💭 Ele/ela pensa em mim?",
+        'btn_love_couple': "💑 Tiragem do casal",
+        'btn_love_continue': "🤔 Vale continuar?",
+        'btn_love_future': "🔮 Futuro do relacionamento",
+        'num_menu_title': "🔢 *Numerologia*\n\nEscolha um método:",
+        'btn_num_date': "📅 Por data de nascimento", 'btn_num_name': "✏️ Por nome",
+        'btn_natal': "🌠 Mapa natal", 'btn_compat': "💑 Compatibilidade",
+        'btn_num_fate': "🔮 Número do destino", 'btn_num_square': "📊 Quadrado Pitagórico",
+        'btn_num_address': "🏠 Numerologia de endereço", 'btn_num_year': "🗓 Ano pessoal",
+        'btn_num_trio': "👨‍👩‍👦 Triângulo de relacionamentos", 'btn_num_biz': "💼 Numerologia de negócios",
+        'btn_page_next': "➡️ Próxima página", 'btn_page_prev': "⬅️ Página anterior",
+        'num_fate_prompt': "🔮 *Número do Destino*\n\nDigite nome completo e data de nascimento:",
+        'num_square_prompt': "📊 *Quadrado Pitagórico*\n\nDigite data de nascimento: *DD.MM.AAAA*",
+        'num_address_prompt': "🏠 *Numerologia de Endereço*\n\nDigite seu endereço:",
+        'num_year_prompt': "🗓 *Ano Pessoal*\n\nDigite data de nascimento: *DD.MM.AAAA*",
+        'num_trio_prompt': "👨‍👩‍👦 *Triângulo de Relacionamentos*\n\nDigite três datas separadas por vírgula:",
+        'num_biz_prompt': "💼 *Numerologia de Negócios*\n\nDigite nome da empresa e data de fundação:",
+        'horoscope_title': "📅 *Horóscopo*\n\nEscolha seu signo:",
+        'btn_horo_day': "☀️ Hoje", 'btn_horo_week': "📅 Esta semana", 'btn_horo_month': "🌙 Este mês",
+        'rune_menu_title': "🪨 *Tiragem de Runas*\n\nEscolha o tipo:",
+        'btn_rune1': "🪨 1 runa — resposta à pergunta", 'btn_rune3': "🪨 3 runas — tiragem de situação",
+        'tarot1_prompt': "🃏 *Tiragem de 1 carta*\n\nFormule sua pergunta:\n\n_Quanto mais precisa, mais profunda a resposta._",
+        'tarot3_prompt': "🎴 *Passado / Presente / Futuro*\n\nDescreva a situação ou faça uma pergunta:",
+        'tarot5_prompt': "🔮 *Tiragem de situação (5 cartas)*\n\nDescreva detalhadamente a situação ou pergunta:",
+        'num_date_prompt': "📅 *Numerologia por data*\n\nDigite a data: *DD.MM.AAAA*",
+        'num_name_prompt': "✏️ *Numerologia por nome*\n\nDigite seu nome completo:",
+        'natal_prompt': "🌠 *Mapa Natal*\n\nDigite: *DD.MM.AAAA HH:MM Cidade*\n\nSe não sabe a hora, coloque 00:00",
+        'compat_prompt': "💑 *Compatibilidade*\n\nDigite duas datas separadas por vírgula:",
+        'free_question_prompt': "❓ *Pergunta para Mystra*\n\nFaça qualquer pergunta sobre Tarot, Numerologia ou esotérico:",
+        'love_thinking_prompt': "💭 *Ele/ela pensa em mim?*\n\nDescreva a pessoa e a situação:",
+        'love_couple_prompt': "💑 *Tiragem do casal*\n\nDescreva sua situação no relacionamento:",
+        'love_continue_prompt': "🤔 *Vale continuar?*\n\nDescreva o relacionamento e suas dúvidas:",
+        'love_future_prompt': "🔮 *Futuro do relacionamento*\n\nDescreva seu relacionamento:",
+        'rune1_prompt': "🪨 *1 runa*\n\nFormule sua pergunta:",
+        'rune3_prompt': "🪨 *3 runas*\n\nDescreva a situação:",
+        'palmistry_prompt': "🖐 *Quiromancia*\n\nEnvie uma foto da sua palma (mão dominante).\n\n_Certifique-se de que a palma esteja bem iluminada._",
+        'palmistry_no_photo': "📷 Por favor envie uma *foto da palma* (não texto).",
+        'reading_palm': "🖐 Lendo as linhas da sua mão...",
+        'dream_prompt': "💭 *Interpretação de sonho*\n\nDescreva seu sonho detalhadamente:",
+        'promo_prompt': "🎟 *Código Promo*\n\nDigite o código promo:",
+        'profile_birthdate_prompt': "📅 Digite sua data de nascimento: *DD.MM.AAAA*",
+        'profile_name_prompt': "✏️ Digite seu nome completo:",
+        'processing': "🔮 Mystra lê os signos...",
+        'pulling_card': "🌟 Sacando a carta do dia...",
+        'reading_moon': "🌙 Lendo o calendário lunar...",
+        'finding_ritual': "🌿 Buscando o ritual do dia...",
+        'calc_lucky': "🔑 Calculando o número da sorte...",
+        'spreading_week': "🃏 Distribuindo as cartas da semana...",
+        'reading_horo': "📅 Lendo o horóscopo de {sign}...",
+        'notif_status': "🔔 *Notificação diária*\n\nStatus: *{status}*\n\n{desc}",
+        'notif_enabled': "✅ Ativada", 'notif_disabled': "❌ Desativada",
+        'notif_on_msg': "🔔 Notificações ativadas! Todo dia às 8:00 você receberá a carta do dia.",
+        'notif_off_msg': "🔕 Notificações desativadas.",
+        'btn_notif_on': "🔔 Ativar", 'btn_notif_off': "🔕 Desativar",
+        'notif_desc': "Todo dia às *8:00* Mystra envia a carta do dia.\nAssinantes recebem interpretação completa.",
+        'paywall': "🔒 *Limite de solicitações gratuitas atingido*\n\nVocê usou suas {free} solicitações gratuitas.\n\n*Assinatura 30 dias — {stars} ⭐*\n• Tarot e Numerologia ilimitados\n• Horóscopo, Lua, Rituais, Carta semanal\n• Tiragens de amor e muito mais",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
+        'btn_buy_card': "💳 Visa / Mastercard — $4.99",
+        'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
+        'sub_active': "💎 *Sua assinatura*\n\n✅ Ativa até: *{date}*\n📊 Solicitações: *{count}*\n🔥 Sequência: *{streak} dias*\n\nCurta o acesso ilimitado! 🔮",
+        'sub_inactive': "💎 *Assinatura Mystra*\n\n🆓 Gratuitas restantes: *{remaining}/{free}*\n🔥 Sequência: *{streak} dias*\n\n*A assinatura inclui:*\n• Tarot, Numerologia, Mapa natal\n• Horóscopo, Lua, Rituais, Runas\n• Tiragens de amor\n\n💰 *{stars} Telegram Stars* / 30 dias",
+        'sub_activated': "✅ *Assinatura ativada!*\n\n🔮 Bem-vindo ao mundo ilimitado de Mystra!\n📅 Válida até: *{date}*\n\nFaça tiragens ilimitadas! 🌟",
+        'support_text': "🆘 *Suporte Técnico*\n\nSe tiver problemas, escreva para nós:\n\n👤 @{username}\n\nResponderemos o mais rápido possível! ⚡",
+        'referral_text': "👥 *Programa de indicação*\n\nIndique amigos e ganhe *+1 solicitação grátis* por cada um!\n\n🔗 *Seu link:*\n`{link}`\n\n👥 Amigos indicados: *{count}*\n🎁 Solicitações bonus: *+{bonus}*",
+        'btn_share_referral': "📤 Compartilhar link",
+        'referral_bonus_msg': "🎁 *Bônus!* {name} entrou pelo seu link. +1 solicitação grátis!",
+        'share_text': "Experimente este bot — tarot e numerologia!",
+        'promo_success': "✅ *Código promo ativado!*\n\nAssinatura estendida por *{days} dias*. 🎉",
+        'promo_invalid': "❌ Código promo não encontrado.", 'promo_used': "❌ Você já usou este código.",
+        'promo_exhausted': "❌ O código promo não está mais disponível.",
+        'profile_title': "👤 *Seu perfil*\n\n✏️ Nome: *{name}*\n📅 Data de nasc.: *{birth}*\n♈ Signo: *{zodiac}*\n⚧ Gênero: *{gender}*\n🌆 Cidade: *{city}*\n🕐 Fuso horário: *{timezone}*\n🔥 Sequência: *{streak} dias*\n🎁 Solicitações bonus: *+{bonus}*",
+        'profile_saved': "✅ Salvo!", 'profile_empty': "não indicado",
+        'btn_set_birthdate': "📅 Data de nascimento", 'btn_set_name': "✏️ Nome",
+        'btn_set_zodiac': "♈ Signo zodiacal", 'btn_set_gender': "⚧ Gênero",
+        'btn_set_city': "🌆 Cidade", 'btn_set_timezone': "🕐 Fuso horário",
+        'btn_clear_profile': "🗑 Limpar perfil",
+        'set_gender_prompt': "⚧ *Indique seu gênero:*",
+        'btn_gender_m': "👨 Masculino", 'btn_gender_f': "👩 Feminino", 'btn_gender_o': "🌈 Outro",
+        'set_city_prompt': "🌆 *Digite sua cidade:*\n\nExemplo: _São Paulo_, _Rio de Janeiro_, _Lisboa_",
+        'set_timezone_prompt': "🕐 *Digite seu fuso horário:*\n\nExemplo: _UTC-3_, _UTC+0_, _UTC+1_",
+        'history_item_btn': "🔸 {title} | {date}",
+        'streak_bonus': "🔥 *Sequência de {days} dias!*\n\nPela sua fidelidade a Mystra — *+1 solicitação grátis* de presente! 🎁",
+        'banned_msg': "⛔ Sua conta foi bloqueada. Entre em contato com o suporte técnico.",
+        'days': ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"],
+        'broadcast_morning': "🌅 *Bom dia! Carta do dia — {date}*",
+        'broadcast_sub_hint': "_💎 Assine para interpretações detalhadas_",
+        'error': "⚠️ Ocorreu um erro ao consultar o oráculo. Tente novamente mais tarde.",
+        'unknown_cmd': "❓ Comando não entendido. Use o menu.",
+        'horo_period': {"day": "hoje", "week": "esta semana", "month": "este mês"},
+        'invoice_title': "Assinatura Mystra — 30 dias",
+        'invoice_desc': "Acesso ilimitado a todas as funções do bot por 30 dias",
+        'payment_unavail': "Pagamento com cartão temporariamente indisponível",
+        'btn_refund': "💳 Reembolso",
+        'refund_request_msg': "💳 *Solicitação de reembolso*\n\nConfirmar reembolso?",
+        'refund_no_payment': "❌ Reembolso não disponível\n\nContate o suporte: @{support}",
+        'refund_success': "✅ Reembolso processado!\n\nO dinheiro retornará em 5-10 dias úteis.\nAssinatura cancelada.",
+        'refund_error': "❌ Não foi possível processar o reembolso.\n\nContate o suporte: @{support}",
+        'btn_refund_confirm': "✅ Sim, reembolsar",
+        'btn_refund_cancel': "❌ Cancelar",
+        'btn_my_stats': "📊 Minhas estatísticas",
+        'btn_my_payments': "📜 Histórico de pagamentos",
+        'btn_delete_account': "🗑 Excluir conta",
+        'btn_notify_time': "⏰ Horário de notificação",
+        'my_stats_title': "📊 *Suas estatísticas*\n\n📆 No bot desde: *{since}*\n🔢 Total de leituras: *{total}*\n🏆 Tipo favorito: *{fav}*\n🔥 Sequência: *{streak} dias*\n👥 Amigos indicados: *{refs}*\n🎁 Solicitações bonus: *+{bonus}*",
+        'my_payments_title': "📜 *Histórico de pagamentos*\n\n",
+        'my_payments_empty': "📜 *Histórico de pagamentos*\n\nNenhum pagamento encontrado.",
+        'delete_account_confirm_msg': "🗑 *Excluir conta*\n\n⚠️ Esta ação é *irreversível*!\n\nSerão excluídos:\n• Perfil e dados pessoais\n• Histórico de leituras\n• Assinatura e bônus\n• Estatísticas de indicação\n\nTem certeza?",
+        'delete_account_done': "✅ *Dados excluídos*\n\nSua conta e todos os dados foram excluídos com sucesso.",
+        'btn_delete_confirm': "⚠️ Sim, excluir tudo",
+        'notify_time_title': "⏰ *Horário de notificação*\n\nEscolha a hora do envio da carta diária (horário de Moscou):\n\nAtual: *{hour}:00 MSK*",
+        'notify_time_set': "✅ Horário de notificação: *{hour}:00 MSK*",
+    },
+    'pl': {
+        'choose_lang': "🌐 Wybierz język / Choose language:",
+        'welcome': "🔮 *Witaj w świecie Mystry*\n\nPełny odczyt jak u prawdziwego tarologa. Karty są tasowane losowo — AI czyta dokładnie Twój rozkład biorąc pod uwagę znak zodiaku i pytanie.\n\n🎴 Tarot · ❤️ Miłość · 💼 Kariera\n🔢 Numerologia · 🪨 Runy · 🖐 Chiromancja\n🌙 Księżyc · 📅 Horoskop · 💭 Sny\n\n_Pierwsze 5 rozkładów jest bezpłatnych._",
+        'terms_accept_btn': "✅ Akceptuję",
+        'terms_view_btn': "📜 Umowa",
+        'terms_read_btn': "🌐 Czytaj na stronie",
+        'main_menu_title': "🔮 *Menu Główne*\n\nWybierz co Cię interesuje:",
+        'btn_tarot': "🎴 Tarot", 'btn_love': "❤️ Miłość",
+        'btn_numerology': "🔢 Numerologia", 'btn_horoscope': "📅 Horoskop",
+        'btn_moon': "🌙 Księżyc", 'btn_lucky': "🔑 Liczba szczęścia",
+        'btn_ritual': "🌿 Rytuał dnia", 'btn_week': "🃏 Karta tygodnia",
+        'btn_card_day': "🌟 Karta dnia", 'btn_question': "❓ Zadaj pytanie",
+        'btn_runes': "🪨 Runy", 'btn_dream': "💭 Interpretacja snu",
+        'btn_palmistry': "🖐 Chiromancja",
+        'btn_subscription': "💎 Subskrypcja", 'btn_promo': "🎟 Kod promo",
+        'btn_notifications': "🔔 Powiadomienia", 'btn_referral': "👥 Polecenia",
+        'btn_profile': "👤 Mój profil", 'btn_support': "🆘 Wsparcie",
+        'btn_back': "◀️ Wstecz", 'btn_main_menu': "🏠 Menu główne",
+        'btn_cancel': "✖️ Anuluj", 'btn_language': "🌐 Język / Language",
+        'btn_readings_menu': "🔮 Wróżby",
+        'btn_esoterics_menu': "✨ Numerologia & Ezoteryka",
+        'btn_account_menu': "👤 Konto",
+        'readings_menu_title': "🔮 *Wróżby*\n\nWybierz rodzaj wróżby:",
+        'esoterics_menu_title': "✨ *Numerologia & Ezoteryka*\n\nWybierz sekcję:",
+        'account_menu_title': "👤 *Konto*\n\nWybierz sekcję:",
+        'btn_tarot_cc': "✡️ Krzyż Celtycki (10 kart)", 'btn_tarot_yn': "☯️ Tak / Nie",
+        'btn_career': "💼 Kariera", 'btn_card_year': "🗓 Karta roku",
+        'btn_my_horo': "♈ Mój horoskop", 'btn_history': "📜 Historia rozkładów",
+        'btn_tarot_library': "📚 Biblioteka Tarota", 'btn_gift_sub': "🎁 Podaruj subskrypcję",
+        'btn_career_money': "💰 Pieniądze & finanse", 'btn_career_job': "💼 Kariera / Praca",
+        'btn_career_biz': "🚀 Biznes & projekty",
+        'career_menu_title': "💼 *Kariera & Pieniądze*\n\nWybierz temat:",
+        'tarot_cc_prompt': "✡️ *Krzyż Celtycki (10 kart)*\n\nOpisz sytuację lub zadaj główne pytanie:",
+        'tarot_yn_prompt': "☯️ *Tak czy Nie?*\n\nSformułuj pytanie wyraźnie:",
+        'career_money_prompt': "💰 *Pieniądze & Finanse*\n\nOpisz sytuację lub zadaj pytanie:",
+        'career_job_prompt': "💼 *Kariera & Praca*\n\nOpisz sytuację lub zadaj pytanie:",
+        'career_biz_prompt': "🚀 *Biznes & Projekty*\n\nOpisz swój biznes lub projekt:",
+        'card_year_prompt': "🗓 *Karta roku*\n\nPodaj datę urodzenia *DD.MM.RRRR*:\n\n_Lub wskaż ją w profilu — karta otworzy się od razu._",
+        'tarot_library_prompt': "📚 *Biblioteka Tarota*\n\nNapisz nazwę karty lub temat:",
+        'history_title': "📜 *Historia rozkładów*\n\n",
+        'history_empty': "📜 *Historia rozkładów*\n\nNie masz jeszcze zapisanych rozkładów.\n\nZrób pierwszy rozkład! 🔮",
+        'moon_new_msg': "🌑 *Nów Księżyca*\n\nCzas nowych początków!\n\nDziś potężna energia do wypowiadania życzeń i stawiania celów. 🌙",
+        'moon_full_msg': "🌕 *Pełnia Księżyca*\n\nCzas kulminacji i zakończenia!\n\nDziś intuicja jest wyostrzona, emocje na szczycie. ✨",
+        'inactive_reminder': "🔮 *Mystra tęskni za Tobą...*\n\nNie zaglądałeś już kilka dni. Karty czekają — może dziś jest właśnie ten dzień. 🌟",
+        'gift_sub_created': "🎁 *Kod podarunkowy utworzony!*\n\nWyślij ten kod znajomemu:\n\n`{code}`\n\nDaje *30 dni* subskrypcji Mystry. ✨",
+        'gift_sub_btn': "🎁 Podaruj subskrypcję znajomemu — {stars} Stars",
+        'tarot_menu_title': "🎴 *Rozkłady Tarota*\n\nWybierz rodzaj rozkładu:",
+        'btn_tarot1': "🃏 1 karta — szybka odpowiedź",
+        'btn_tarot3': "🎴 3 karty — Przeszłość/Teraźniejszość/Przyszłość",
+        'btn_tarot5': "🔮 5 kart — Rozkład sytuacyjny",
+        'love_menu_title': "❤️ *Miłość & Związki*\n\nWybierz rozkład:",
+        'btn_love_thinking': "💭 Czy on/ona myśli o mnie?",
+        'btn_love_couple': "💑 Rozkład na parę",
+        'btn_love_continue': "🤔 Czy warto kontynuować?",
+        'btn_love_future': "🔮 Przyszłość związku",
+        'num_menu_title': "🔢 *Numerologia*\n\nWybierz metodę:",
+        'btn_num_date': "📅 Wg daty urodzenia", 'btn_num_name': "✏️ Wg imienia",
+        'btn_natal': "🌠 Karta natalna", 'btn_compat': "💑 Zgodność par",
+        'btn_num_fate': "🔮 Liczba przeznaczenia", 'btn_num_square': "📊 Kwadrat Pitagorasa",
+        'btn_num_address': "🏠 Numerologia adresu", 'btn_num_year': "🗓 Rok osobisty",
+        'btn_num_trio': "👨‍👩‍👦 Trójkąt relacji", 'btn_num_biz': "💼 Numerologia biznesu",
+        'btn_page_next': "➡️ Następna strona", 'btn_page_prev': "⬅️ Poprzednia strona",
+        'num_fate_prompt': "🔮 *Liczba Przeznaczenia*\n\nPodaj pełne imię i datę urodzenia:",
+        'num_square_prompt': "📊 *Kwadrat Pitagorasa*\n\nPodaj datę urodzenia: *DD.MM.RRRR*",
+        'num_address_prompt': "🏠 *Numerologia Adresu*\n\nPodaj swój adres:",
+        'num_year_prompt': "🗓 *Rok Osobisty*\n\nPodaj datę urodzenia: *DD.MM.RRRR*",
+        'num_trio_prompt': "👨‍👩‍👦 *Trójkąt Relacji*\n\nPodaj trzy daty urodzenia oddzielone przecinkami:",
+        'num_biz_prompt': "💼 *Numerologia Biznesu*\n\nPodaj nazwę firmy i datę założenia:",
+        'horoscope_title': "📅 *Horoskop*\n\nWybierz znak zodiaku:",
+        'btn_horo_day': "☀️ Dziś", 'btn_horo_week': "📅 W tym tygodniu", 'btn_horo_month': "🌙 W tym miesiącu",
+        'rune_menu_title': "🪨 *Rozkład Run*\n\nWybierz rodzaj:",
+        'btn_rune1': "🪨 1 runa — odpowiedź na pytanie", 'btn_rune3': "🪨 3 runy — rozkład sytuacyjny",
+        'tarot1_prompt': "🃏 *Rozkład 1 karty*\n\nSformułuj pytanie:\n\n_Im dokładniejsze, tym głębsza odpowiedź._",
+        'tarot3_prompt': "🎴 *Przeszłość / Teraźniejszość / Przyszłość*\n\nOpisz sytuację lub zadaj pytanie:",
+        'tarot5_prompt': "🔮 *Rozkład sytuacyjny (5 kart)*\n\nSzczegółowo opisz sytuację lub pytanie:",
+        'num_date_prompt': "📅 *Numerologia wg daty*\n\nPodaj datę: *DD.MM.RRRR*",
+        'num_name_prompt': "✏️ *Numerologia wg imienia*\n\nPodaj swoje pełne imię i nazwisko:",
+        'natal_prompt': "🌠 *Karta Natalna*\n\nPodaj: *DD.MM.RRRR GG:MM Miasto*\n\nJeśli nie znasz godziny, wpisz 00:00",
+        'compat_prompt': "💑 *Zgodność Par*\n\nPodaj dwie daty oddzielone przecinkiem:",
+        'free_question_prompt': "❓ *Pytanie do Mystry*\n\nZadaj dowolne pytanie dotyczące Tarota, Numerologii lub ezoteryki:",
+        'love_thinking_prompt': "💭 *Czy on/ona myśli o mnie?*\n\nOpisz osobę i sytuację:",
+        'love_couple_prompt': "💑 *Rozkład na parę*\n\nOpisz swoją sytuację w związku:",
+        'love_continue_prompt': "🤔 *Czy warto kontynuować?*\n\nOpisz związek i co Cię niepokoi:",
+        'love_future_prompt': "🔮 *Przyszłość związku*\n\nOpisz swój związek:",
+        'rune1_prompt': "🪨 *1 runa*\n\nSformułuj pytanie:",
+        'rune3_prompt': "🪨 *3 runy*\n\nOpisz sytuację:",
+        'palmistry_prompt': "🖐 *Chiromancja*\n\nWyślij zdjęcie swojej dłoni (ręki dominującej).\n\n_Upewnij się, że dłoń jest dobrze oświetlona._",
+        'palmistry_no_photo': "📷 Proszę wyślij *zdjęcie dłoni* (nie tekst).",
+        'reading_palm': "🖐 Czytam linie Twojej dłoni...",
+        'dream_prompt': "💭 *Interpretacja snu*\n\nSzczegółowo opisz swój sen:",
+        'promo_prompt': "🎟 *Kod Promo*\n\nWprowadź kod promo:",
+        'profile_birthdate_prompt': "📅 Podaj datę urodzenia: *DD.MM.RRRR*",
+        'profile_name_prompt': "✏️ Podaj swoje pełne imię i nazwisko:",
+        'processing': "🔮 Mystra czyta znaki...",
+        'pulling_card': "🌟 Ciągnę kartę dnia...",
+        'reading_moon': "🌙 Czytam kalendarz księżycowy...",
+        'finding_ritual': "🌿 Szukam rytuału dnia...",
+        'calc_lucky': "🔑 Obliczam liczbę szczęścia...",
+        'spreading_week': "🃏 Rozkładam karty na tydzień...",
+        'reading_horo': "📅 Czytam horoskop dla {sign}...",
+        'notif_status': "🔔 *Codzienna notyfikacja*\n\nStatus: *{status}*\n\n{desc}",
+        'notif_enabled': "✅ Włączona", 'notif_disabled': "❌ Wyłączona",
+        'notif_on_msg': "🔔 Powiadomienia włączone! Każdego ranka o 8:00 dostaniesz kartę dnia.",
+        'notif_off_msg': "🔕 Powiadomienia wyłączone.",
+        'btn_notif_on': "🔔 Włącz", 'btn_notif_off': "🔕 Wyłącz",
+        'notif_desc': "Każdego ranka o *8:00* Mystra wysyła kartę dnia.\nAbonenci otrzymują pełną interpretację.",
+        'paywall': "🔒 *Limit bezpłatnych zapytań wyczerpany*\n\nWykorzystałeś wszystkie {free} bezpłatne zapytania.\n\n*Subskrypcja 30 dni — {stars} ⭐*\n• Nieograniczony Tarot i Numerologia\n• Horoskop, Księżyc, Rytuały, Karta tygodnia\n• Rozkłady miłosne i wiele więcej",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
+        'btn_buy_card': "💳 Visa / Mastercard — $4.99",
+        'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
+        'sub_active': "💎 *Twoja subskrypcja*\n\n✅ Aktywna do: *{date}*\n📊 Zapytania: *{count}*\n🔥 Seria: *{streak} dni*\n\nCiesz się nieograniczonym dostępem! 🔮",
+        'sub_inactive': "💎 *Subskrypcja Mystry*\n\n🆓 Pozostałe bezpłatne: *{remaining}/{free}*\n🔥 Seria: *{streak} dni*\n\n*Subskrypcja zawiera:*\n• Tarot, Numerologia, Karta natalna\n• Horoskop, Księżyc, Rytuały, Runy\n• Rozkłady miłosne\n\n💰 *{stars} Telegram Stars* / 30 dni",
+        'sub_activated': "✅ *Subskrypcja aktywowana!*\n\n🔮 Witaj w nieograniczonym świecie Mystry!\n📅 Ważna do: *{date}*\n\nRób nieograniczone rozkłady! 🌟",
+        'support_text': "🆘 *Wsparcie Techniczne*\n\nJeśli masz problemy, napisz do nas:\n\n👤 @{username}\n\nOdpowiemy jak najszybciej! ⚡",
+        'referral_text': "👥 *Program poleceń*\n\nZapraszaj znajomych i zdobywaj *+1 bezpłatne zapytanie* za każdego!\n\n🔗 *Twój link:*\n`{link}`\n\n👥 Zaproszonych: *{count}*\n🎁 Bonusowe zapytania: *+{bonus}*",
+        'btn_share_referral': "📤 Udostępnij link",
+        'referral_bonus_msg': "🎁 *Bonus!* {name} dołączył przez Twój link. +1 bezpłatne zapytanie!",
+        'share_text': "Wypróbuj tego bota — tarot i numerologia!",
+        'promo_success': "✅ *Kod promo aktywowany!*\n\nSubskrypcja przedłużona o *{days} dni*. 🎉",
+        'promo_invalid': "❌ Kod promo nie znaleziony.", 'promo_used': "❌ Już użyłeś tego kodu.",
+        'promo_exhausted': "❌ Kod promo nie jest już dostępny.",
+        'profile_title': "👤 *Twój profil*\n\n✏️ Imię: *{name}*\n📅 Data ur.: *{birth}*\n♈ Znak: *{zodiac}*\n⚧ Płeć: *{gender}*\n🌆 Miasto: *{city}*\n🕐 Strefa czasowa: *{timezone}*\n🔥 Seria: *{streak} dni*\n🎁 Bonusowe zapytania: *+{bonus}*",
+        'profile_saved': "✅ Zapisano!", 'profile_empty': "nie podano",
+        'btn_set_birthdate': "📅 Data urodzenia", 'btn_set_name': "✏️ Imię",
+        'btn_set_zodiac': "♈ Znak zodiaku", 'btn_set_gender': "⚧ Płeć",
+        'btn_set_city': "🌆 Miasto", 'btn_set_timezone': "🕐 Strefa czasowa",
+        'btn_clear_profile': "🗑 Wyczyść profil",
+        'set_gender_prompt': "⚧ *Podaj swoją płeć:*",
+        'btn_gender_m': "👨 Mężczyzna", 'btn_gender_f': "👩 Kobieta", 'btn_gender_o': "🌈 Inne",
+        'set_city_prompt': "🌆 *Podaj swoje miasto:*\n\nNp.: _Warszawa_, _Kraków_, _Wrocław_",
+        'set_timezone_prompt': "🕐 *Podaj swoją strefę czasową:*\n\nNp.: _UTC+1_, _UTC+2_",
+        'history_item_btn': "🔸 {title} | {date}",
+        'streak_bonus': "🔥 *{days}-dniowa seria!*\n\nZa wierność Mystrze — *+1 bezpłatne zapytanie* w prezencie! 🎁",
+        'banned_msg': "⛔ Twoje konto zostało zablokowane. Skontaktuj się z pomocą techniczną.",
+        'days': ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"],
+        'broadcast_morning': "🌅 *Dzień dobry! Karta dnia — {date}*",
+        'broadcast_sub_hint': "_💎 Subskrybuj dla szczegółowych interpretacji_",
+        'error': "⚠️ Wystąpił błąd podczas konsultacji z wyrocznią. Spróbuj ponownie później.",
+        'unknown_cmd': "❓ Nie rozumiem polecenia. Użyj menu.",
+        'horo_period': {"day": "dziś", "week": "w tym tygodniu", "month": "w tym miesiącu"},
+        'invoice_title': "Subskrypcja Mystra — 30 dni",
+        'invoice_desc': "Nieograniczony dostęp do wszystkich funkcji bota przez 30 dni",
+        'payment_unavail': "Płatność kartą tymczasowo niedostępna",
+        'btn_refund': "💳 Zwrot środków",
+        'refund_request_msg': "💳 *Wniosek o zwrot*\n\nPotwierdzić zwrot?",
+        'refund_no_payment': "❌ Zwrot niedostępny\n\nSkontaktuj się z pomocą: @{support}",
+        'refund_success': "✅ Zwrot przetworzony!\n\nŚrodki wrócą w ciągu 5-10 dni roboczych.\nSubskrypcja anulowana.",
+        'refund_error': "❌ Nie udało się przetworzyć zwrotu.\n\nSkontaktuj się z pomocą: @{support}",
+        'btn_refund_confirm': "✅ Tak, zwróć",
+        'btn_refund_cancel': "❌ Anuluj",
+        'btn_my_stats': "📊 Moje statystyki",
+        'btn_my_payments': "📜 Historia płatności",
+        'btn_delete_account': "🗑 Usuń konto",
+        'btn_notify_time': "⏰ Godzina powiadomienia",
+        'my_stats_title': "📊 *Twoje statystyki*\n\n📆 W bocie od: *{since}*\n🔢 Łączna liczba rozkładów: *{total}*\n🏆 Ulubiony typ: *{fav}*\n🔥 Seria: *{streak} dni*\n👥 Zaproszonych: *{refs}*\n🎁 Bonusowe zapytania: *+{bonus}*",
+        'my_payments_title': "📜 *Historia płatności*\n\n",
+        'my_payments_empty': "📜 *Historia płatności*\n\nBrak płatności.",
+        'delete_account_confirm_msg': "🗑 *Usunięcie konta*\n\n⚠️ Ta akcja jest *nieodwracalna*!\n\nZostanie usunięte:\n• Profil i dane osobowe\n• Historia rozkładów\n• Subskrypcja i bonusy\n• Statystyki poleceń\n\nCzy jesteś pewien?",
+        'delete_account_done': "✅ *Dane usunięte*\n\nTwoje konto i wszystkie dane zostały pomyślnie usunięte.",
+        'btn_delete_confirm': "⚠️ Tak, usuń wszystko",
+        'notify_time_title': "⏰ *Godzina powiadomienia*\n\nWybierz godzinę wysyłki karty dnia (czas moskiewski):\n\nAktualna: *{hour}:00 MSK*",
+        'notify_time_set': "✅ Godzina powiadomienia: *{hour}:00 MSK*",
+    },
 }
 
 def t(lang: str, key: str, **kwargs) -> str:
@@ -481,7 +1326,8 @@ async def init_db():
                     "last_active_date TEXT DEFAULT NULL","is_banned INTEGER DEFAULT 0",
                     "gender TEXT DEFAULT NULL","city TEXT DEFAULT NULL",
                     "timezone TEXT DEFAULT NULL","result TEXT DEFAULT NULL",
-                    "terms_accepted INTEGER DEFAULT 0"]:
+                    "terms_accepted INTEGER DEFAULT 0",
+                    "notify_hour INTEGER DEFAULT 8"]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
@@ -722,6 +1568,10 @@ async def apply_promo(user_id: int, code: str) -> tuple:
     return 'ok', days
 
 async def get_admin_stats():
+    now = datetime.now(MOSCOW_TZ)
+    today_str = now.strftime("%Y-%m-%d")
+    week_str = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    month_str = (now - timedelta(days=30)).strftime("%Y-%m-%d")
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users") as c:
             total_users = (await c.fetchone())[0]
@@ -739,7 +1589,140 @@ async def get_admin_stats():
             en_users = (await c.fetchone())[0]
         async with db.execute("SELECT user_id,username,action,timestamp FROM requests ORDER BY timestamp DESC LIMIT 20") as c:
             recent = await c.fetchall()
-    return total_users, total_requests, active_subs, notif_users, banned_users, ru_users, en_users, recent
+        async with db.execute("SELECT COUNT(*) FROM users WHERE first_seen >= ?", (today_str,)) as c:
+            new_today = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM users WHERE first_seen >= ?", (week_str,)) as c:
+            new_week = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM users WHERE first_seen >= ?", (month_str,)) as c:
+            new_month = (await c.fetchone())[0]
+    return total_users, total_requests, active_subs, notif_users, banned_users, ru_users, en_users, recent, new_today, new_week, new_month
+
+# ─── ADMIN EXTRA STATS ────────────────────────────────────────────────────────
+async def get_admin_finance_stats():
+    now = datetime.now(MOSCOW_TZ)
+    today_str = now.strftime("%Y-%m-%d")
+    week_str = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    month_str = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM payments") as c:
+            total_p = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM payments WHERE created_at >= ?", (today_str,)) as c:
+            today_p = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM payments WHERE created_at >= ?", (week_str,)) as c:
+            week_p = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM payments WHERE created_at >= ?", (month_str,)) as c:
+            month_p = (await c.fetchone())[0]
+        async with db.execute(
+            "SELECT method, COUNT(*) as cnt FROM payments GROUP BY method ORDER BY cnt DESC LIMIT 5") as c:
+            methods = await c.fetchall()
+        async with db.execute("SELECT COUNT(DISTINCT user_id) FROM payments") as c:
+            paid_users = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM users") as c:
+            total_users = (await c.fetchone())[0]
+    return total_p, today_p, week_p, month_p, methods, paid_users, total_users
+
+async def get_top_users(limit: int = 10):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id, username, request_count FROM users ORDER BY request_count DESC LIMIT ?",
+            (limit,)) as c:
+            return await c.fetchall()
+
+async def get_popular_actions(limit: int = 10):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT action, COUNT(*) as cnt FROM requests GROUP BY action ORDER BY cnt DESC LIMIT ?",
+            (limit,)) as c:
+            return await c.fetchall()
+
+async def generate_users_csv() -> bytes:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id, username, first_seen, request_count, language, COALESCE(is_banned,0), COALESCE(streak,0) FROM users ORDER BY first_seen DESC"
+        ) as c:
+            rows = await c.fetchall()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["user_id", "username", "first_seen", "requests", "language", "is_banned", "streak"])
+    writer.writerows(rows)
+    return buf.getvalue().encode("utf-8-sig")
+
+# ─── USER ACCOUNT HELPERS ─────────────────────────────────────────────────────
+_ACTION_LABELS = {
+    "tarot_1_question": "🃏 Таро 1 карта", "tarot_3_question": "🎴 Таро 3 карты",
+    "tarot_5_question": "🔮 Таро 5 карт", "tarot_cc_question": "✡️ Кельтский крест",
+    "tarot_yn_question": "☯️ Да/Нет", "love_thinking": "💭 Думает ли он/она",
+    "love_couple": "💑 Расклад на пару", "love_continue": "🤔 Стоит ли продолжать",
+    "love_future": "🔮 Будущее отношений", "career_money": "💰 Деньги",
+    "career_job": "💼 Карьера", "career_biz": "🚀 Бизнес",
+    "rune_1": "🪨 1 руна", "rune_3": "🪨 3 руны",
+    "dream_interp": "💭 Сон", "palmistry": "🖐 Хиромантия",
+    "num_date": "🔢 Нумерология", "num_name": "✏️ Нумерология имени",
+    "natal_chart": "🌠 Натальная карта", "compatibility": "💑 Совместимость",
+    "free_question": "❓ Вопрос", "card_of_day": "🌟 Карта дня",
+}
+
+async def get_user_stats(user_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT action, COUNT(*) as cnt FROM requests WHERE user_id=? GROUP BY action ORDER BY cnt DESC LIMIT 1",
+            (user_id,)) as c:
+            fav_row = await c.fetchone()
+        async with db.execute("SELECT COUNT(*) FROM requests WHERE user_id=?", (user_id,)) as c:
+            total = (await c.fetchone())[0]
+        async with db.execute(
+            "SELECT first_seen, COALESCE(streak,0), COALESCE(bonus_requests,0) FROM users WHERE user_id=?",
+            (user_id,)) as c:
+            row = await c.fetchone()
+        async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by=?", (user_id,)) as c:
+            refs = (await c.fetchone())[0]
+    since = row[0][:10] if row and row[0] else "?"
+    streak = row[1] if row else 0
+    bonus = row[2] if row else 0
+    fav_key = fav_row[0] if fav_row else None
+    fav = _ACTION_LABELS.get(fav_key, fav_key or "—")
+    return {"total": total, "fav": fav, "since": since, "streak": streak, "refs": refs, "bonus": bonus}
+
+async def get_user_payments(user_id: int) -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT method, amount, currency, created_at FROM payments WHERE user_id=? ORDER BY created_at DESC LIMIT 10",
+            (user_id,)) as c:
+            return await c.fetchall()
+
+async def delete_user_data(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM subscriptions WHERE user_id=?", (user_id,))
+        await db.execute("DELETE FROM readings_history WHERE user_id=?", (user_id,))
+        await db.execute("DELETE FROM requests WHERE user_id=?", (user_id,))
+        await db.execute("DELETE FROM crypto_invoices WHERE user_id=?", (user_id,))
+        await db.execute("DELETE FROM yookassa_invoices WHERE user_id=?", (user_id,))
+        await db.execute("DELETE FROM payments WHERE user_id=?", (user_id,))
+        await db.execute("DELETE FROM promo_uses WHERE user_id=?", (user_id,))
+        await db.execute(
+            "UPDATE users SET username='deleted', full_name=NULL, birth_date=NULL, zodiac=NULL, "
+            "gender=NULL, city=NULL, timezone=NULL, referred_by=NULL, notifications=0 WHERE user_id=?",
+            (user_id,))
+        await db.commit()
+
+async def get_notify_hour(user_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COALESCE(notify_hour, 8) FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+    return row[0] if row else 8
+
+async def set_notify_hour(user_id: int, hour: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET notify_hour=? WHERE user_id=?", (hour, user_id))
+        await db.commit()
+
+async def get_notification_users_for_hour(hour: int) -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id FROM users WHERE notifications=1 AND COALESCE(is_banned,0)=0 AND COALESCE(notify_hour,8)=?",
+            (hour,)) as c:
+            rows = await c.fetchall()
+    return [r[0] for r in rows]
 
 # ─── CLAUDE ───────────────────────────────────────────────────────────────────
 async def ask_claude(prompt: str, lang: str = 'ru') -> str:
@@ -829,10 +1812,13 @@ def account_submenu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_profile'), callback_data="profile")
     kb.button(text=t(lang,'btn_history'), callback_data="history_view")
     kb.button(text=t(lang,'btn_tarot_library'), callback_data="tarot_library")
+    kb.button(text=t(lang,'btn_my_stats'), callback_data="my_stats")
+    kb.button(text=t(lang,'btn_my_payments'), callback_data="my_payments")
     kb.button(text=t(lang,'btn_support'), callback_data="support")
     kb.button(text=t(lang,'terms_view_btn'), callback_data="terms_view")
+    kb.button(text=t(lang,'btn_delete_account'), callback_data="delete_account")
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
-    kb.adjust(2, 2, 2, 2, 2, 1)
+    kb.adjust(2, 2, 2, 2, 2, 2, 1, 1)
     return kb.as_markup()
 
 def back_button(lang: str = 'ru'):
@@ -1062,18 +2048,19 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
         await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
 
 # ─── DAILY BROADCAST ──────────────────────────────────────────────────────────
-async def send_daily_broadcast():
+async def send_daily_broadcast(current_hour: int = 8):
     today = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y")
     today_seed = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
-    channel_card = random.choice(TAROT_CARDS)
-    if CHANNEL_ID:
+    # канал — только в 8:00
+    if current_hour == 8 and CHANNEL_ID:
+        channel_card = random.choice(TAROT_CARDS)
         try:
             ch_answer = await ask_claude(f"Сегодня {today}. Карта дня: {channel_card}. Дай краткую интерпретацию 80-100 слов.", 'ru')
             await bot.send_message(CHANNEL_ID, f"🌅 *Карта дня — {today}*\n\n*{channel_card}*\n\n{ch_answer}", parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Channel broadcast error: {e}")
-    user_ids = await get_notification_users()
-    logger.info(f"Broadcast: {len(user_ids)} users")
+    user_ids = await get_notification_users_for_hour(current_hour)
+    logger.info(f"Broadcast hour={current_hour}: {len(user_ids)} users")
     for uid in user_ids:
         try:
             lang = await get_user_lang(uid)
@@ -1092,11 +2079,10 @@ async def send_daily_broadcast():
 async def daily_broadcast_loop():
     while True:
         now = datetime.now(MOSCOW_TZ)
-        target = now.replace(hour=8, minute=0, second=0, microsecond=0)
-        if now >= target:
-            target += timedelta(days=1)
-        await asyncio.sleep((target - now).total_seconds())
-        await send_daily_broadcast()
+        # ждём начала следующего часа
+        next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        await asyncio.sleep((next_hour - now).total_seconds())
+        await send_daily_broadcast(current_hour=next_hour.hour)
 
 async def moon_notification_loop():
     while True:
@@ -1405,9 +2391,10 @@ async def cmd_admin(message: Message):
     await show_admin_menu(message)
 
 async def show_admin_menu(message_or_callback):
-    total, reqs, subs, notif, banned, ru, en, _ = await get_admin_stats()
+    total, reqs, subs, notif, banned, ru, en, _, new_today, new_week, new_month = await get_admin_stats()
     text = (f"👑 *Панель администратора*\n\n"
             f"👥 Всего: *{total}* (🇷🇺 {ru} / 🇬🇧 {en})\n"
+            f"📅 Новых: сегодня *{new_today}* | неделя *{new_week}* | месяц *{new_month}*\n"
             f"💎 Подписок: *{subs}* | 🔔 Рассылка: *{notif}*\n"
             f"⛔ Заблокировано: *{banned}* | 📊 Запросов: *{reqs}*")
     kb = InlineKeyboardBuilder()
@@ -1417,7 +2404,11 @@ async def show_admin_menu(message_or_callback):
     kb.button(text="🔍 Найти юзера", callback_data="adm_search")
     kb.button(text="🎟 Промокоды", callback_data="adm_promos")
     kb.button(text="📢 Рассылка", callback_data="adm_broadcast_menu")
-    kb.adjust(2, 2, 2)
+    kb.button(text="💰 Финансы", callback_data="adm_finance")
+    kb.button(text="🏆 Топ юзеров", callback_data="adm_top")
+    kb.button(text="📈 Популярность", callback_data="adm_popular")
+    kb.button(text="📥 Экспорт CSV", callback_data="adm_export")
+    kb.adjust(2, 2, 2, 2, 2)
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     else:
@@ -1674,6 +2665,67 @@ async def _show_promos(callback: CallbackQuery):
     kb.button(text="🏠 Меню", callback_data="adm_main")
     kb.adjust(*([1] * len(promos)), 1) if promos else kb.adjust(1)
     await safe_edit(callback, text, markup=kb.as_markup())
+
+@dp.callback_query(F.data == "adm_finance")
+async def adm_finance_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    total_p, today_p, week_p, month_p, methods, paid_users, total_users = await get_admin_finance_stats()
+    conv = round(paid_users / total_users * 100, 1) if total_users else 0
+    text = (f"💰 *Финансовая статистика*\n\n"
+            f"📊 Всего платежей: *{total_p}*\n"
+            f"📅 Сегодня: *{today_p}* | Неделя: *{week_p}* | Месяц: *{month_p}*\n\n"
+            f"👥 Платящих юзеров: *{paid_users}* из *{total_users}*\n"
+            f"📈 Конверсия: *{conv}%*\n\n"
+            f"💳 *По методам:*\n")
+    for method, cnt in methods:
+        text += f"• `{method}` — {cnt}\n"
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Обновить", callback_data="adm_finance")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(2)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_top")
+async def adm_top_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    rows = await get_top_users(10)
+    text = "🏆 *Топ-10 активных пользователей*\n\n"
+    for i, (uid, uname, cnt) in enumerate(rows, 1):
+        label = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
+        text += f"{i}. {label} — *{cnt}* запросов\n"
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Обновить", callback_data="adm_top")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(2)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_popular")
+async def adm_popular_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    rows = await get_popular_actions(10)
+    text = "📈 *Популярность функций*\n\n"
+    for action, cnt in rows:
+        label = _ACTION_LABELS.get(action, action)
+        text += f"• {label} — *{cnt}*\n"
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Обновить", callback_data="adm_popular")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(2)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_export")
+async def adm_export_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    await callback.answer("⏳ Генерирую файл...", show_alert=False)
+    csv_bytes = await generate_users_csv()
+    filename = f"users_{datetime.now(MOSCOW_TZ).strftime('%Y%m%d_%H%M')}.csv"
+    await bot.send_document(
+        callback.from_user.id,
+        BufferedInputFile(csv_bytes, filename=filename),
+        caption=f"📥 Экспорт пользователей — {filename}")
 
 @dp.message(Command("grant"))
 async def cmd_grant(message: Message):
@@ -2175,6 +3227,89 @@ async def referral_cb(callback: CallbackQuery):
     await callback.message.edit_text(t(lang,'referral_text',link=link,count=ref_count,bonus=bonus), parse_mode="Markdown", reply_markup=kb.as_markup())
     await callback.answer()
 
+# ─── CALLBACK: MY STATS / PAYMENTS / DELETE / NOTIFY TIME ────────────────────
+@dp.callback_query(F.data == "my_stats")
+async def my_stats_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    stats = await get_user_stats(uid)
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    await safe_edit(callback,
+        t(lang, 'my_stats_title',
+          since=stats['since'], total=stats['total'], fav=stats['fav'],
+          streak=stats['streak'], refs=stats['refs'], bonus=stats['bonus']),
+        markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "my_payments")
+async def my_payments_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    payments = await get_user_payments(uid)
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    if not payments:
+        await safe_edit(callback, t(lang, 'my_payments_empty'), markup=kb.as_markup())
+        await callback.answer()
+        return
+    text = t(lang, 'my_payments_title')
+    for method, amount, currency, created_at in payments:
+        date_str = created_at[:10] if created_at else "?"
+        text += f"• `{method}` — {amount} {currency} [{date_str}]\n"
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "delete_account")
+async def delete_account_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    kb = InlineKeyboardBuilder()
+    kb.button(text=t(lang, 'btn_delete_confirm'), callback_data="delete_account_confirm")
+    kb.button(text=t(lang, 'btn_refund_cancel'), callback_data="account_menu")
+    kb.adjust(1)
+    await safe_edit(callback, t(lang, 'delete_account_confirm_msg'), markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "delete_account_confirm")
+async def delete_account_confirm_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    await delete_user_data(uid)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🏠 Главное меню", callback_data="back_main")
+    await safe_edit(callback, t(lang, 'delete_account_done'), markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "notify_time_menu")
+async def notify_time_menu_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    current_hour = await get_notify_hour(uid)
+    kb = InlineKeyboardBuilder()
+    for h in [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]:
+        mark = "✅ " if h == current_hour else ""
+        kb.button(text=f"{mark}{h}:00", callback_data=f"notify_h_{h}")
+    kb.button(text=t(lang,'btn_back'), callback_data="notifications")
+    kb.adjust(6, 6, 6, 1)
+    await safe_edit(callback, t(lang, 'notify_time_title', hour=current_hour), markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("notify_h_"))
+async def notify_h_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    hour = int(callback.data.split("_")[2])
+    await set_notify_hour(uid, hour)
+    kb = InlineKeyboardBuilder()
+    for h in [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]:
+        mark = "✅ " if h == hour else ""
+        kb.button(text=f"{mark}{h}:00", callback_data=f"notify_h_{h}")
+    kb.button(text=t(lang,'btn_back'), callback_data="notifications")
+    kb.adjust(6, 6, 6, 1)
+    await safe_edit(callback, t(lang, 'notify_time_title', hour=hour), markup=kb.as_markup())
+    await callback.answer(t(lang, 'notify_time_set', hour=hour), show_alert=False)
+
 # ─── CALLBACK: TEXT INPUT TRIGGERS ────────────────────────────────────────────
 @dp.callback_query(F.data == "tarot_1")
 async def tarot_1_cb(callback: CallbackQuery):
@@ -2350,9 +3485,11 @@ async def notifications_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     enabled = await get_notifications_status(uid)
+    hour = await get_notify_hour(uid)
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_notif_off' if enabled else 'btn_notif_on'), callback_data="notif_off" if enabled else "notif_on")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
     kb.adjust(1)
     status = t(lang,'notif_enabled' if enabled else 'notif_disabled')
     await callback.message.edit_text(t(lang,'notif_status',status=status,desc=t(lang,'notif_desc')), parse_mode="Markdown", reply_markup=kb.as_markup())
@@ -2363,11 +3500,13 @@ async def notif_toggle(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     new_status = await toggle_notifications(uid, callback.from_user.username)
+    hour = await get_notify_hour(uid)
     status = t(lang,'notif_enabled' if new_status else 'notif_disabled')
     msg = t(lang,'notif_on_msg' if new_status else 'notif_off_msg')
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_notif_off' if new_status else 'btn_notif_on'), callback_data="notif_off" if new_status else "notif_on")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
     kb.adjust(1)
     await callback.message.edit_text(t(lang,'notif_status',status=status,desc=msg), parse_mode="Markdown", reply_markup=kb.as_markup())
     await callback.answer()
