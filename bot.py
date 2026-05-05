@@ -4880,13 +4880,54 @@ async def gift_crypto_cb(callback: CallbackQuery):
     await safe_edit(callback, f"💎 *Оплата криптой — подарок*\n\nСумма: *{SUBSCRIPTION_USDT} USDT*\n\nПосле оплаты подписка автоматически активируется получателю.", markup=kb.as_markup())
     await callback.answer()
 
+REFUND_DAYS_LIMIT = 3      # возврат доступен N дней с момента оплаты
+REFUND_READS_LIMIT = 3     # не более N раскладов использовано
+
 async def get_last_yukassa_payment(user_id: int):
+    """Возвращает (payment_id, amount, created_at) последнего YooKassa-платежа или None."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT payment_id FROM payments WHERE user_id=? ORDER BY created_at DESC LIMIT 1",
+            "SELECT payment_id, amount, created_at FROM payments "
+            "WHERE user_id=? AND method='yookassa' ORDER BY created_at DESC LIMIT 1",
             (user_id,)) as c:
+            return await c.fetchone()
+
+async def count_readings_since(user_id: int, since_iso: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM readings_history WHERE user_id=? AND created_at >= ?",
+            (user_id, since_iso)) as c:
             row = await c.fetchone()
-    return row[0] if row else None
+    return row[0] if row else 0
+
+async def _check_refund_eligibility(uid: int) -> tuple[str | None, str | None, str | None]:
+    """
+    Возвращает (payment_id, amount, reason_denied).
+    reason_denied=None означает что возврат разрешён.
+    """
+    row = await get_last_yukassa_payment(uid)
+    if not row:
+        return None, None, "no_yookassa_payment"
+
+    payment_id, amount, created_at_str = row
+
+    try:
+        paid_at = datetime.fromisoformat(created_at_str)
+        if paid_at.tzinfo is None:
+            paid_at = paid_at.replace(tzinfo=timezone.utc)
+    except Exception:
+        return payment_id, amount, "date_parse_error"
+
+    days_passed = (datetime.now(timezone.utc) - paid_at).days
+    if days_passed > REFUND_DAYS_LIMIT:
+        return payment_id, amount, f"expired:{days_passed}"
+
+    reads_used = await count_readings_since(uid, created_at_str)
+    if reads_used > REFUND_READS_LIMIT:
+        return payment_id, amount, f"too_many_reads:{reads_used}"
+
+    return payment_id, amount, None
+
 
 @dp.callback_query(F.data == "refund_request")
 async def refund_request_cb(callback: CallbackQuery):
@@ -4895,35 +4936,118 @@ async def refund_request_cb(callback: CallbackQuery):
     if not await has_subscription(uid):
         await callback.answer("❌ Нет активной подписки", show_alert=True)
         return
-    payment_id = await get_last_yukassa_payment(uid)
-    if not payment_id:
+
+    payment_id, amount, denied = await _check_refund_eligibility(uid)
+
+    if denied == "no_yookassa_payment":
         kb = InlineKeyboardBuilder()
         kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
-        await safe_edit(callback, t(lang, 'refund_no_payment', support=SUPPORT_USERNAME), markup=kb.as_markup())
+        msg = (
+            f"❌ *Автоматический возврат недоступен*\n\n"
+            f"Возврат возможен только для оплат через ЮКасса.\n"
+            f"Для оплат через Stars или крипту обратитесь в поддержку: @{SUPPORT_USERNAME}"
+            if lang == "ru" else
+            f"❌ *Automatic refund unavailable*\n\n"
+            f"Refunds are only available for YooKassa payments.\n"
+            f"For Stars or crypto payments contact support: @{SUPPORT_USERNAME}"
+        )
+        await safe_edit(callback, msg, markup=kb.as_markup())
         await callback.answer()
         return
+
+    if denied and denied.startswith("expired:"):
+        days = denied.split(":")[1]
+        kb = InlineKeyboardBuilder()
+        kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
+        msg = (
+            f"❌ *Срок возврата истёк*\n\n"
+            f"Возврат доступен в течение {REFUND_DAYS_LIMIT} дней с момента оплаты.\n"
+            f"Прошло: *{days} дн.*\n\n"
+            f"Обратитесь в поддержку: @{SUPPORT_USERNAME}"
+            if lang == "ru" else
+            f"❌ *Refund period expired*\n\n"
+            f"Refunds are available within {REFUND_DAYS_LIMIT} days of payment.\n"
+            f"Elapsed: *{days} days*\n\n"
+            f"Contact support: @{SUPPORT_USERNAME}"
+        )
+        await safe_edit(callback, msg, markup=kb.as_markup())
+        await callback.answer()
+        return
+
+    if denied and denied.startswith("too_many_reads:"):
+        reads = denied.split(":")[1]
+        kb = InlineKeyboardBuilder()
+        kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
+        msg = (
+            f"❌ *Возврат недоступен*\n\n"
+            f"Вы уже использовали *{reads} раскладов* по подписке.\n"
+            f"Возврат возможен только если использовано не более {REFUND_READS_LIMIT} раскладов.\n\n"
+            f"Обратитесь в поддержку: @{SUPPORT_USERNAME}"
+            if lang == "ru" else
+            f"❌ *Refund unavailable*\n\n"
+            f"You have already used *{reads} readings* with this subscription.\n"
+            f"Refund is only available if no more than {REFUND_READS_LIMIT} readings were used.\n\n"
+            f"Contact support: @{SUPPORT_USERNAME}"
+        )
+        await safe_edit(callback, msg, markup=kb.as_markup())
+        await callback.answer()
+        return
+
+    # Условия выполнены — показываем форму подтверждения
+    amount_display = f"{amount} ₽" if amount else "250 ₽"
+    if lang == "ru":
+        msg = (
+            f"💳 *Возврат средств*\n\n"
+            f"Сумма к возврату: *{amount_display}*\n\n"
+            f"⚠️ После возврата:\n"
+            f"• Подписка будет немедленно отменена\n"
+            f"• Средства вернутся в течение 5–10 рабочих дней\n\n"
+            f"Подтвердить возврат?"
+        )
+    else:
+        msg = (
+            f"💳 *Refund Request*\n\n"
+            f"Amount: *{amount_display}*\n\n"
+            f"⚠️ After refund:\n"
+            f"• Subscription will be immediately cancelled\n"
+            f"• Funds returned within 5–10 business days\n\n"
+            f"Confirm refund?"
+        )
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang, 'btn_refund_confirm'), callback_data=f"refund_confirm_{payment_id}")
     kb.button(text=t(lang, 'btn_refund_cancel'), callback_data="subscription")
     kb.adjust(1)
-    await safe_edit(callback, t(lang, 'refund_request_msg'), markup=kb.as_markup())
+    await safe_edit(callback, msg, markup=kb.as_markup())
     await callback.answer()
+
 
 @dp.callback_query(F.data.startswith("refund_confirm_"))
 async def refund_confirm_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     payment_id = callback.data[len("refund_confirm_"):]
+
+    # Повторная проверка условий перед обработкой
+    _, amount, denied = await _check_refund_eligibility(uid)
+    if denied:
+        kb = InlineKeyboardBuilder()
+        kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
+        await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME), markup=kb.as_markup())
+        await callback.answer()
+        return
+
     if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
         kb = InlineKeyboardBuilder()
         kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
         await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME), markup=kb.as_markup())
         await callback.answer()
         return
+
     auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
     headers = {"Idempotence-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
+    refund_amount = amount if amount else "250.00"
     refund_payload = {
-        "amount": {"value": "250.00", "currency": "RUB"},
+        "amount": {"value": refund_amount, "currency": "RUB"},
         "payment_id": payment_id
     }
     try:
@@ -4932,6 +5056,7 @@ async def refund_confirm_cb(callback: CallbackQuery):
                                     json=refund_payload, auth=auth, headers=headers) as resp:
                 data = await resp.json()
         status = data.get("status", "")
+        logger.info(f"YooKassa refund response for {uid}: {data}")
         if status in ("succeeded", "pending"):
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute("DELETE FROM subscriptions WHERE user_id=?", (uid,))
@@ -4944,11 +5069,19 @@ async def refund_confirm_cb(callback: CallbackQuery):
                 await bot.send_message(ADMIN_ID,
                     f"🔄 *Возврат оформлен*\n"
                     f"👤 {uname} (`{uid}`)\n"
-                    f"💳 payment_id: `{payment_id}`\n"
-                    f"💵 250.00 RUB | статус: {status}",
+                    f"💳 payment\\_id: `{payment_id}`\n"
+                    f"💵 {refund_amount} RUB | статус: {status}",
                     parse_mode="Markdown")
         else:
+            err = data.get("description", data.get("code", "unknown"))
             logger.error(f"YuKassa refund failed for {uid}: {data}")
+            if ADMIN_ID:
+                try:
+                    await bot.send_message(ADMIN_ID,
+                        f"⚠️ Возврат не прошёл для `{uid}`\n`{err}`",
+                        parse_mode="Markdown")
+                except Exception:
+                    pass
             kb_err = InlineKeyboardBuilder()
             kb_err.button(text=t(lang, 'btn_back'), callback_data="subscription")
             await safe_edit(callback, t(lang, 'refund_error', support=SUPPORT_USERNAME), markup=kb_err.as_markup())
