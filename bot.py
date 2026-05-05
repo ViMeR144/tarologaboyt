@@ -2395,15 +2395,35 @@ async def settings_title_text(user_id: int, lang: str) -> str:
     mode = await get_response_mode(user_id)
     tone = await get_tone_style(user_id)
     astro = await get_astro_tarot_enabled(user_id)
-    mode_label = "Short" if mode == "short" else "Detailed"
-    tone_label = {"soft": "Soft", "balanced": "Balanced", "mystic": "Mystic", "direct": "Direct"}.get(tone, "Balanced")
-    astro_label = "on" if astro else "off"
     if lang == 'ru':
-        mode_label = "???????" if mode == "short" else "????????"
-        tone_label = {"soft": "?????", "balanced": "??????", "mystic": "??????????", "direct": "?????"}.get(tone, "??????")
-        astro_label = "???" if astro else "????"
-        return f"?? *?????????*\n\n?????: *{mode_label}*\n?????: *{tone_label}*\nAstro+Tarot: *{astro_label}*"
-    return f"?? *Settings*\n\nLength: *{mode_label}*\nStyle: *{tone_label}*\nAstro+Tarot: *{astro_label}*"
+        mode_label = "Коротко" if mode == "short" else "Подробно"
+        tone_label = {
+            "soft": "Мягко",
+            "balanced": "Обычно",
+            "mystic": "Мистически",
+            "direct": "Прямо",
+        }.get(tone, "Обычно")
+        astro_label = "вкл" if astro else "выкл"
+        return (
+            f"⚙️ *Настройки*\n\n"
+            f"Длина: *{mode_label}*\n"
+            f"Стиль: *{tone_label}*\n"
+            f"Astro+Tarot: *{astro_label}*"
+        )
+    mode_label = "Short" if mode == "short" else "Detailed"
+    tone_label = {
+        "soft": "Soft",
+        "balanced": "Balanced",
+        "mystic": "Mystic",
+        "direct": "Direct",
+    }.get(tone, "Balanced")
+    astro_label = "on" if astro else "off"
+    return (
+        f"⚙️ *Settings*\n\n"
+        f"Length: *{mode_label}*\n"
+        f"Style: *{tone_label}*\n"
+        f"Astro+Tarot: *{astro_label}*"
+    )
 
 async def settings_kb(user_id: int, lang: str = 'ru'):
     mode = await get_response_mode(user_id)
@@ -2411,12 +2431,12 @@ async def settings_kb(user_id: int, lang: str = 'ru'):
     astro = await get_astro_tarot_enabled(user_id)
     hour = await get_notify_hour(user_id)
     kb = InlineKeyboardBuilder()
-    kb.button(text=("? ???????" if mode == "short" else "???????") if lang == 'ru' else ("? Short" if mode == "short" else "Short"), callback_data="resp_mode_short")
-    kb.button(text=("? ????????" if mode == "detailed" else "????????") if lang == 'ru' else ("? Detailed" if mode == "detailed" else "Detailed"), callback_data="resp_mode_detailed")
-    kb.button(text=("? ?????" if tone == "soft" else "?????") if lang == 'ru' else ("? Soft" if tone == "soft" else "Soft"), callback_data="tone_soft")
-    kb.button(text=("? ??????" if tone == "balanced" else "??????") if lang == 'ru' else ("? Balanced" if tone == "balanced" else "Balanced"), callback_data="tone_balanced")
-    kb.button(text=("? ??????????" if tone == "mystic" else "??????????") if lang == 'ru' else ("? Mystic" if tone == "mystic" else "Mystic"), callback_data="tone_mystic")
-    kb.button(text=("? ?????" if tone == "direct" else "?????") if lang == 'ru' else ("? Direct" if tone == "direct" else "Direct"), callback_data="tone_direct")
+    kb.button(text=("✅ Коротко" if mode == "short" else "Коротко") if lang == 'ru' else ("✅ Short" if mode == "short" else "Short"), callback_data="resp_mode_short")
+    kb.button(text=("✅ Подробно" if mode == "detailed" else "Подробно") if lang == 'ru' else ("✅ Detailed" if mode == "detailed" else "Detailed"), callback_data="resp_mode_detailed")
+    kb.button(text=("✅ Мягко" if tone == "soft" else "Мягко") if lang == 'ru' else ("✅ Soft" if tone == "soft" else "Soft"), callback_data="tone_soft")
+    kb.button(text=("✅ Обычно" if tone == "balanced" else "Обычно") if lang == 'ru' else ("✅ Balanced" if tone == "balanced" else "Balanced"), callback_data="tone_balanced")
+    kb.button(text=("✅ Мистически" if tone == "mystic" else "Мистически") if lang == 'ru' else ("✅ Mystic" if tone == "mystic" else "Mystic"), callback_data="tone_mystic")
+    kb.button(text=("✅ Прямо" if tone == "direct" else "Прямо") if lang == 'ru' else ("✅ Direct" if tone == "direct" else "Direct"), callback_data="tone_direct")
     kb.button(text=f"Astro+Tarot: {'ON' if astro else 'OFF'}", callback_data="toggle_astro_tarot")
     kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
