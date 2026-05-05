@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import aiohttp
+import aiohttp.web
 import aiosqlite
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
@@ -4413,18 +4414,42 @@ async def buy_rub_cb(callback: CallbackQuery):
     payment_id = payment["id"]
     confirm_url = payment.get("confirmation", {}).get("confirmation_url", "")
     if not confirm_url:
-        await callback.message.answer(t(lang, 'sbp_error'), parse_mode="Markdown"); return
+        logger.error(f"YooKassa: no confirmation_url for payment {payment_id}, full response: {payment}")
+        if ADMIN_ID:
+            try:
+                await bot.send_message(
+                    ADMIN_ID,
+                    f"⚠️ YooKassa: платёж создан (`{payment_id}`), но нет confirmation\\_url.\n"
+                    f"Ответ API: `{payment}`",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        await callback.message.answer(t(lang, 'sbp_error'), parse_mode="Markdown")
+        return
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR IGNORE INTO yookassa_invoices (payment_id, user_id) VALUES (?,?)",
                          (payment_id, uid))
         await db.commit()
     kb = InlineKeyboardBuilder()
-    kb.button(text="YooKassa - all payment methods", url=confirm_url)
+    btn_text = "💳 Оплатить через ЮКасса" if lang == "ru" else "💳 Pay via YooKassa"
+    kb.button(text=btn_text, url=confirm_url)
     kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
     kb.adjust(1)
-    pay_text = (
-        "*YooKassa payment*\n\nOpen the payment page and choose any available method: bank card, YooMoney, SBP, or any other enabled option.\n\nYour subscription will activate automatically after successful payment."
-    )
+    if lang == "ru":
+        pay_text = (
+            "💳 *Оплата через ЮКасса*\n\n"
+            "Нажмите кнопку ниже — откроется страница оплаты.\n"
+            "Доступные способы: банковская карта, СБП, ЮMoney и другие.\n\n"
+            "✅ Подписка активируется автоматически после успешной оплаты."
+        )
+    else:
+        pay_text = (
+            "💳 *YooKassa Payment*\n\n"
+            "Tap the button below to open the payment page.\n"
+            "Available methods: bank card, SBP, YooMoney, and more.\n\n"
+            "✅ Subscription activates automatically after successful payment."
+        )
     await callback.message.answer(pay_text, parse_mode="Markdown", reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data == "buy_sbp")
@@ -5284,6 +5309,81 @@ async def handle_message(message: Message):
 
     await _do_request(uid, message.from_user.username, action, chat_id, prompt_msg_id, prompt, lang, header)
 
+# ─── YOOKASSA WEBHOOK ─────────────────────────────────────────────────────────
+async def _handle_yookassa_webhook(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    try:
+        data = await request.json()
+    except Exception:
+        return aiohttp.web.Response(status=400, text="Bad JSON")
+
+    event = data.get("event", "")
+    obj = data.get("object", {})
+    payment_id = obj.get("id", "")
+    status = obj.get("status", "")
+
+    logger.info(f"YooKassa webhook: event={event} payment_id={payment_id} status={status}")
+
+    if event == "payment.succeeded" and payment_id:
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute(
+                "SELECT user_id FROM yookassa_invoices WHERE payment_id=?", (payment_id,)
+            )
+            row = await cur.fetchone()
+        if row:
+            user_id = row[0]
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute(
+                    "INSERT OR IGNORE INTO payments (payment_id, user_id, method, amount, currency) VALUES (?,?,?,?,?)",
+                    (payment_id, user_id, "yookassa",
+                     obj.get("amount", {}).get("value", "250.00"), "RUB")
+                )
+                await db.commit()
+            lang = await get_user_lang(user_id)
+            expiry = await activate_subscription(user_id, 30, "standard")
+            await log_funnel_event(user_id, "payment_success", "yookassa_webhook")
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute(
+                    "DELETE FROM yookassa_invoices WHERE payment_id=?", (payment_id,)
+                )
+                await db.commit()
+            try:
+                await bot.send_message(
+                    user_id,
+                    t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
+                    parse_mode="Markdown",
+                    reply_markup=main_menu(lang)
+                )
+            except Exception as e:
+                logger.error(f"YooKassa webhook: send_message error for {user_id}: {e}")
+            if ADMIN_ID:
+                amount = obj.get("amount", {}).get("value", "?")
+                method = obj.get("payment_method", {}).get("type", "unknown")
+                try:
+                    await bot.send_message(
+                        ADMIN_ID,
+                        f"💰 *Новая оплата (webhook)!*\n"
+                        f"👤 id:{user_id}\n"
+                        f"💳 Способ: {method}\n"
+                        f"💵 Сумма: {amount} RUB\n"
+                        f"📅 Подписка до: {expiry.strftime('%d.%m.%Y')}",
+                        parse_mode="Markdown"
+                    )
+                except Exception:
+                    pass
+        else:
+            logger.warning(f"YooKassa webhook: payment {payment_id} not found in invoices")
+
+    return aiohttp.web.Response(status=200, text="OK")
+
+
+def create_web_app() -> aiohttp.web.Application:
+    app = aiohttp.web.Application()
+    app.router.add_get("/", lambda r: aiohttp.web.Response(text="Mystra bot is running"))
+    app.router.add_get("/health", lambda r: aiohttp.web.Response(text="OK"))
+    app.router.add_post(YOOKASSA_WEBHOOK_PATH, _handle_yookassa_webhook)
+    return app
+
+
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 async def set_commands():
     await bot.set_my_commands([
@@ -5304,6 +5404,14 @@ async def main():
     asyncio.create_task(inactive_reminder_loop())
     asyncio.create_task(check_crypto_payments())
     asyncio.create_task(check_yukassa_payments())
+
+    app = create_web_app()
+    runner = aiohttp.web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp.web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    logger.info(f"HTTP сервер запущен на порту {PORT} (webhook: {YOOKASSA_WEBHOOK_PATH})")
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
