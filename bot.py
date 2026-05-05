@@ -42,6 +42,7 @@ WELCOME_PHOTO = os.getenv("WELCOME_PHOTO", "")
 SITE_URL = os.getenv("SITE_URL", "").strip().rstrip("/")
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "support")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "").strip().lstrip("@")
 YOOKASSA_WEBHOOK_PATH = os.getenv("YOOKASSA_WEBHOOK_PATH", "/yookassa/webhook")
 PORT = int(os.getenv("PORT", "8080"))
 
@@ -188,6 +189,9 @@ TEXTS = {
         'support_text': "🆘 *Техническая поддержка*\n\nЕсли у вас возникли проблемы с ботом, напишите нам:\n\n👤 @{username}\n\nМы ответим как можно скорее! ⚡",
         'referral_text': "👥 *Реферальная программа*\n\nПриглашайте друзей и получайте *+1 бесплатный запрос* за каждого!\n\n🔗 *Ваша ссылка:*\n`{link}`\n\n👥 Приглашено друзей: *{count}*\n🎁 Бонусных запросов: *+{bonus}*\n\n_Поделитесь ссылкой — и карты откроют вам больше_",
         'btn_share_referral': "📤 Поделиться ссылкой",
+        'btn_news': "📰 Новости",
+        'news_text': "📰 *Новости Мистры*\n\nАктуальные обновления, советы и эксклюзивные расклады — всё в нашем Telegram-канале.\n\nПодписывайтесь, чтобы ничего не пропустить! ✨",
+        'news_btn_channel': "📢 Перейти в канал",
         'referral_bonus_msg': "🎁 *Бонус!* {name} присоединился по вашей ссылке. +1 бесплатный запрос!",
         'share_text': "Попробуй этого бота — гадание на Таро и нумерология!",
         'promo_success': "✅ *Промокод активирован!*\n\nПодписка продлена на *{days} дней*. 🎉",
@@ -355,6 +359,9 @@ TEXTS = {
         'support_text': "🆘 *Technical Support*\n\nIf you have any issues with the bot, contact us:\n\n👤 @{username}\n\nWe'll respond as soon as possible! ⚡",
         'referral_text': "👥 *Referral Program*\n\nInvite friends and get *+1 free request* for each one!\n\n🔗 *Your link:*\n`{link}`\n\n👥 Friends invited: *{count}*\n🎁 Bonus requests: *+{bonus}*\n\n_Share your link — and the cards will reveal more_",
         'btn_share_referral': "📤 Share link",
+        'btn_news': "📰 News",
+        'news_text': "📰 *Mystra News*\n\nLatest updates, tips and exclusive spreads — all in our Telegram channel.\n\nSubscribe so you don't miss anything! ✨",
+        'news_btn_channel': "📢 Go to channel",
         'referral_bonus_msg': "🎁 *Bonus!* {name} joined via your link. +1 free request!",
         'share_text': "Try this bot — Tarot readings and numerology!",
         'promo_success': "✅ *Promo code activated!*\n\nSubscription extended by *{days} days*. 🎉",
@@ -523,6 +530,9 @@ TEXTS = {
         'support_text': "🆘 *Технічна підтримка*\n\nЯкщо у вас виникли проблеми, напишіть нам:\n\n👤 @{username}\n\nМи відповімо якнайшвидше! ⚡",
         'referral_text': "👥 *Реферальна програма*\n\nЗапрошуйте друзів і отримуйте *+1 безкоштовний запит* за кожного!\n\n🔗 *Ваше посилання:*\n`{link}`\n\n👥 Запрошено друзів: *{count}*\n🎁 Бонусних запитів: *+{bonus}*",
         'btn_share_referral': "📤 Поділитися посиланням",
+        'btn_news': "📰 Новини",
+        'news_text': "📰 *Новини Містри*\n\nАктуальні оновлення, поради та ексклюзивні розклади — у нашому Telegram-каналі.\n\nПідписуйтесь, щоб нічого не пропустити! ✨",
+        'news_btn_channel': "📢 Перейти до каналу",
         'referral_bonus_msg': "🎁 *Бонус!* {name} приєднався за вашим посиланням. +1 безкоштовний запит!",
         'share_text': "Спробуй цього бота — ворожіння на Таро і нумерологія!",
         'promo_success': "✅ *Промокод активовано!*\n\nПідписку продовжено на *{days} днів*. 🎉",
@@ -686,6 +696,9 @@ TEXTS = {
         'support_text': "🆘 *Teknik Destek*\n\nSorun yaşıyorsanız bize yazın:\n\n👤 @{username}\n\nEn kısa sürede yanıtlayacağız! ⚡",
         'referral_text': "👥 *Referans Programı*\n\nArkadaşlarınızı davet edin, her biri için *+1 ücretsiz istek* kazanın!\n\n🔗 *Linkiniz:*\n`{link}`\n\n👥 Davet edilen: *{count}*\n🎁 Bonus istekler: *+{bonus}*",
         'btn_share_referral': "📤 Linki paylaş",
+        'btn_news': "📰 Haberler",
+        'news_text': "📰 *Mystra Haberleri*\n\nGüncel güncellemeler, ipuçları ve özel fallar — Telegram kanalımızda.\n\nKaçırmamak için abone olun! ✨",
+        'news_btn_channel': "📢 Kanala git",
         'referral_bonus_msg': "🎁 *Bonus!* {name} linkiniz üzerinden katıldı. +1 ücretsiz istek!",
         'share_text': "Bu botu deneyin — Tarot falı ve numeroloji!",
         'promo_success': "✅ *Promosyon kodu aktifleştirildi!*\n\nAbonelik *{days} gün* uzatıldı. 🎉",
@@ -849,6 +862,9 @@ TEXTS = {
         'support_text': "🆘 *Soporte Técnico*\n\nSi tienes problemas, escríbenos:\n\n👤 @{username}\n\n¡Te responderemos lo antes posible! ⚡",
         'referral_text': "👥 *Programa de referidos*\n\n¡Invita amigos y gana *+1 solicitud gratis* por cada uno!\n\n🔗 *Tu enlace:*\n`{link}`\n\n👥 Amigos invitados: *{count}*\n🎁 Solicitudes bonus: *+{bonus}*",
         'btn_share_referral': "📤 Compartir enlace",
+        'btn_news': "📰 Noticias",
+        'news_text': "📰 *Noticias de Mystra*\n\nActualizaciones, consejos y tiradas exclusivas — en nuestro canal de Telegram.\n\n¡Suscríbete para no perderte nada! ✨",
+        'news_btn_channel': "📢 Ir al canal",
         'referral_bonus_msg': "🎁 *¡Bonus!* {name} se unió con tu enlace. +1 solicitud gratis!",
         'share_text': "¡Prueba este bot — tarot y numerología!",
         'promo_success': "✅ *¡Código promo activado!*\n\nSuscripción extendida *{days} días*. 🎉",
@@ -1012,6 +1028,9 @@ TEXTS = {
         'support_text': "🆘 *Suporte Técnico*\n\nSe tiver problemas, escreva para nós:\n\n👤 @{username}\n\nResponderemos o mais rápido possível! ⚡",
         'referral_text': "👥 *Programa de indicação*\n\nIndique amigos e ganhe *+1 solicitação grátis* por cada um!\n\n🔗 *Seu link:*\n`{link}`\n\n👥 Amigos indicados: *{count}*\n🎁 Solicitações bonus: *+{bonus}*",
         'btn_share_referral': "📤 Compartilhar link",
+        'btn_news': "📰 Notícias",
+        'news_text': "📰 *Notícias da Mystra*\n\nAtualizações, dicas e leituras exclusivas — em nosso canal do Telegram.\n\nAssine para não perder nada! ✨",
+        'news_btn_channel': "📢 Ir para o canal",
         'referral_bonus_msg': "🎁 *Bônus!* {name} entrou pelo seu link. +1 solicitação grátis!",
         'share_text': "Experimente este bot — tarot e numerologia!",
         'promo_success': "✅ *Código promo ativado!*\n\nAssinatura estendida por *{days} dias*. 🎉",
@@ -1175,6 +1194,9 @@ TEXTS = {
         'support_text': "🆘 *Wsparcie Techniczne*\n\nJeśli masz problemy, napisz do nas:\n\n👤 @{username}\n\nOdpowiemy jak najszybciej! ⚡",
         'referral_text': "👥 *Program poleceń*\n\nZapraszaj znajomych i zdobywaj *+1 bezpłatne zapytanie* za każdego!\n\n🔗 *Twój link:*\n`{link}`\n\n👥 Zaproszonych: *{count}*\n🎁 Bonusowe zapytania: *+{bonus}*",
         'btn_share_referral': "📤 Udostępnij link",
+        'btn_news': "📰 Aktualności",
+        'news_text': "📰 *Aktualności Mystra*\n\nNajnowsze aktualizacje, wskazówki i ekskluzywne rozkłady — na naszym kanale Telegram.\n\nSubskrybuj, żeby niczego nie przegapić! ✨",
+        'news_btn_channel': "📢 Przejdź do kanału",
         'referral_bonus_msg': "🎁 *Bonus!* {name} dołączył przez Twój link. +1 bezpłatne zapytanie!",
         'share_text': "Wypróbuj tego bota — tarot i numerologia!",
         'promo_success': "✅ *Kod promo aktywowany!*\n\nSubskrypcja przedłużona o *{days} dni*. 🎉",
@@ -2203,8 +2225,13 @@ def main_menu(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_readings_menu'), callback_data="readings_menu")
     kb.button(text=t(lang,'btn_esoterics_menu'), callback_data="esoterics_menu")
     kb.button(text=t(lang,'btn_account_menu'), callback_data="account_menu")
-    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
-    kb.adjust(2, 1, 1, 1, 1)
+    if CHANNEL_USERNAME:
+        kb.button(text=t(lang,'btn_news'), callback_data="news")
+        kb.button(text=t(lang,'btn_language'), callback_data="change_language")
+        kb.adjust(2, 1, 1, 2, 1)
+    else:
+        kb.button(text=t(lang,'btn_language'), callback_data="change_language")
+        kb.adjust(2, 1, 1, 1, 1)
     return kb.as_markup()
 
 def readings_submenu_kb(lang: str = 'ru'):
@@ -4191,7 +4218,18 @@ async def profile_clear_cb(callback: CallbackQuery):
     await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
     await callback.answer("🗑")
 
-# ─── CALLBACK: SUPPORT & REFERRAL ─────────────────────────────────────────────
+# ─── CALLBACK: NEWS, SUPPORT & REFERRAL ──────────────────────────────────────
+@dp.callback_query(F.data == "news")
+async def news_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    kb = InlineKeyboardBuilder()
+    if CHANNEL_USERNAME:
+        kb.button(text=t(lang, 'news_btn_channel'), url=f"https://t.me/{CHANNEL_USERNAME}")
+    kb.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
+    kb.adjust(1)
+    await safe_edit(callback, t(lang, 'news_text'), markup=kb.as_markup())
+    await callback.answer()
+
 @dp.callback_query(F.data == "support")
 async def support_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
