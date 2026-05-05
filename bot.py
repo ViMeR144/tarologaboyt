@@ -5,6 +5,7 @@ import io
 import logging
 import os
 import random
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -16,12 +17,13 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, BotCommand, BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
-import anthropic
+from openai import AsyncOpenAI
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 YUKASSA_TOKEN = os.getenv("YUKASSA_TOKEN", "")
 # YK_SBP format: "shopId:secretKey" — for direct YuKassa API (SBP payments)
@@ -52,7 +54,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 BOT_USERNAME = ""  # set in main()
 
 # ─── TRANSLATIONS ─────────────────────────────────────────────────────────────
@@ -159,10 +161,10 @@ TEXTS = {
         'reading_horo': "📅 Читаю гороскоп для {sign}...",
         'notif_status': "🔔 *Ежедневная рассылка*\n\nСтатус: *{status}*\n\n{desc}",
         'notif_enabled': "✅ Включена", 'notif_disabled': "❌ Выключена",
-        'notif_on_msg': "🔔 Рассылка включена! Каждое утро жди карту дня.",
+        'notif_on_msg': "🔔 Рассылка включена! Каждое утро в 8:00 жди карту дня.",
         'notif_off_msg': "🔕 Рассылка отключена.",
         'btn_notif_on': "🔔 Включить", 'btn_notif_off': "🔕 Отключить",
-        'notif_desc': "Каждое утро Мистра присылает карту дня.\nПодписчики получают развёрнутую интерпретацию.",
+        'notif_desc': "Каждое утро в *8:00* Мистра присылает карту дня.\nПодписчики получают развёрнутую интерпретацию.",
         'paywall': "🔒 *Лимит бесплатных запросов исчерпан*\n\nВы использовали все {free} бесплатных запросов.\n\n*Подписка на 30 дней — {stars} ⭐*\n• Безлимитные расклады Таро и Нумерология\n• Гороскоп, Луна, Ритуалы, Карта недели\n• Любовные расклады и многое другое",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 ЮКасса (карта/ЮMoney) — 250 ₽",
         'btn_buy_sbp': "📱 СБП — 250 ₽",
@@ -172,7 +174,7 @@ TEXTS = {
         'sbp_btn_pay': "📱 Открыть форму оплаты СБП",
         'sbp_error': "❌ Ошибка создания платежа. Попробуйте позже или выберите другой способ оплаты.",
         'sub_active': "💎 *Ваша подписка*\n\n✅ Активна до: *{date}*\n📊 Запросов: *{count}*\n🔥 Серия: *{streak} дней*\n\nНаслаждайтесь безлимитным доступом! 🔮",
-        'sub_inactive': "💎 *Подписка на Мистру*\n\n🆓 Бесплатных осталось: *{remaining}/{free}*\n🔥 Серия: *{streak} дней*\n\n*Подписка включает:*\n• Таро, Нумерология, Натальная карта\n• Гороскоп, Луна, Ритуалы, Руны\n• Любовные расклады\n• Ежедневная рассылка \n\n💰 *{stars} Telegram Stars* / 30 дней",
+        'sub_inactive': "💎 *Подписка на Мистру*\n\n🆓 Бесплатных осталось: *{remaining}/{free}*\n🔥 Серия: *{streak} дней*\n\n*Подписка включает:*\n• Таро, Нумерология, Натальная карта\n• Гороскоп, Луна, Ритуалы, Руны\n• Любовные расклады\n• Ежедневная рассылка в 8:00\n\n💰 *{stars} Telegram Stars* / 30 дней",
         'sub_activated': "✅ *Подписка активирована!*\n\n🔮 Добро пожаловать в безграничный мир Мистры!\n📅 Действует до: *{date}*\n\nДелайте неограниченные расклады! 🌟",
         'support_text': "🆘 *Техническая поддержка*\n\nЕсли у вас возникли проблемы с ботом, напишите нам:\n\n👤 @{username}\n\nМы ответим как можно скорее! ⚡",
         'referral_text': "👥 *Реферальная программа*\n\nПриглашайте друзей и получайте *+1 бесплатный запрос* за каждого!\n\n🔗 *Ваша ссылка:*\n`{link}`\n\n👥 Приглашено друзей: *{count}*\n🎁 Бонусных запросов: *+{bonus}*\n\n_Поделитесь ссылкой — и карты откроют вам больше_",
@@ -325,10 +327,10 @@ TEXTS = {
         'reading_horo': "📅 Reading horoscope for {sign}...",
         'notif_status': "🔔 *Daily Broadcast*\n\nStatus: *{status}*\n\n{desc}",
         'notif_enabled': "✅ Enabled", 'notif_disabled': "❌ Disabled",
-        'notif_on_msg': "🔔 Broadcast enabled! Every morning you'll get the card of the day.",
+        'notif_on_msg': "🔔 Broadcast enabled! Every morning at 8:00 you'll get the card of the day.",
         'notif_off_msg': "🔕 Broadcast disabled.",
         'btn_notif_on': "🔔 Enable", 'btn_notif_off': "🔕 Disable",
-        'notif_desc': "Every morning Mystra sends you the card of the day.\nSubscribers get a detailed interpretation.",
+        'notif_desc': "Every morning at *8:00* Mystra sends you the card of the day.\nSubscribers get a detailed interpretation.",
         'paywall': "🔒 *Free request limit reached*\n\nYou've used all {free} free requests.\n\n*30-day Subscription — {stars} ⭐*\n• Unlimited Tarot spreads & Numerology\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads and much more",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 YuKassa (card/YuMoney) — 250 ₽",
         'btn_buy_sbp': "📱 SBP (Fast Pay) — 250 ₽",
@@ -338,7 +340,7 @@ TEXTS = {
         'sbp_btn_pay': "📱 Open SBP Payment Form",
         'sbp_error': "❌ Payment creation failed. Please try later or choose a different payment method.",
         'sub_active': "💎 *Your Subscription*\n\n✅ Active until: *{date}*\n📊 Requests: *{count}*\n🔥 Streak: *{streak} days*\n\nEnjoy unlimited access! 🔮",
-        'sub_inactive': "💎 *Mystra Subscription*\n\n🆓 Free requests left: *{remaining}/{free}*\n🔥 Streak: *{streak} days*\n\n*Subscription includes:*\n• Tarot, Numerology, Natal Chart, Runes\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads\n• Daily broadcast \n\n💰 *{stars} Telegram Stars* / 30 days",
+        'sub_inactive': "💎 *Mystra Subscription*\n\n🆓 Free requests left: *{remaining}/{free}*\n🔥 Streak: *{streak} days*\n\n*Subscription includes:*\n• Tarot, Numerology, Natal Chart, Runes\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads\n• Daily broadcast at 8:00\n\n💰 *{stars} Telegram Stars* / 30 days",
         'sub_activated': "✅ *Subscription activated!*\n\n🔮 Welcome to Mystra's limitless realm!\n📅 Active until: *{date}*\n\nEnjoy unlimited spreads! 🌟",
         'support_text': "🆘 *Technical Support*\n\nIf you have any issues with the bot, contact us:\n\n👤 @{username}\n\nWe'll respond as soon as possible! ⚡",
         'referral_text': "👥 *Referral Program*\n\nInvite friends and get *+1 free request* for each one!\n\n🔗 *Your link:*\n`{link}`\n\n👥 Friends invited: *{count}*\n🎁 Bonus requests: *+{bonus}*\n\n_Share your link — and the cards will reveal more_",
@@ -492,10 +494,10 @@ TEXTS = {
         'reading_horo': "📅 Читаю гороскоп для {sign}...",
         'notif_status': "🔔 *Щоденна розсилка*\n\nСтатус: *{status}*\n\n{desc}",
         'notif_enabled': "✅ Увімкнена", 'notif_disabled': "❌ Вимкнена",
-        'notif_on_msg': "🔔 Розсилку увімкнено! Щоранку чекайте карту дня.",
+        'notif_on_msg': "🔔 Розсилку увімкнено! Щоранку о 8:00 чекайте карту дня.",
         'notif_off_msg': "🔕 Розсилку вимкнено.",
         'btn_notif_on': "🔔 Увімкнути", 'btn_notif_off': "🔕 Вимкнути",
-        'notif_desc': "Щоранку о Містра надсилає карту дня.\nПідписники отримують розгорнуту інтерпретацію.",
+        'notif_desc': "Щоранку о *8:00* Містра надсилає карту дня.\nПідписники отримують розгорнуту інтерпретацію.",
         'paywall': "🔒 *Ліміт безкоштовних запитів вичерпано*\n\nВи використали всі {free} безкоштовних запити.\n\n*Підписка на 30 днів — {stars} ⭐*\n• Безлімітні розклади Таро і Нумерологія\n• Гороскоп, Місяць, Ритуали, Карта тижня\n• Любовні розклади та багато іншого",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 ЮКаса — 250 ₽",
         'btn_buy_sbp': "📱 СБП — 250 ₽",
@@ -659,10 +661,10 @@ TEXTS = {
         'reading_horo': "📅 {sign} için burç okuyorum...",
         'notif_status': "🔔 *Günlük Bildirim*\n\nDurum: *{status}*\n\n{desc}",
         'notif_enabled': "✅ Açık", 'notif_disabled': "❌ Kapalı",
-        'notif_on_msg': "🔔 Bildirimler açıldı! Her sabah de günün kartı gelecek.",
+        'notif_on_msg': "🔔 Bildirimler açıldı! Her sabah 8:00'de günün kartı gelecek.",
         'notif_off_msg': "🔕 Bildirimler kapatıldı.",
         'btn_notif_on': "🔔 Aç", 'btn_notif_off': "🔕 Kapat",
-        'notif_desc': "Her sabah de Mystra günün kartını gönderir.\nAboneler detaylı yorum alır.",
+        'notif_desc': "Her sabah *8:00*'de Mystra günün kartını gönderir.\nAboneler detaylı yorum alır.",
         'paywall': "🔒 *Ücretsiz kullanım limitine ulaştınız*\n\n{free} ücretsiz isteğinizi kullandınız.\n\n*30 günlük abonelik — {stars} ⭐*\n• Sınırsız Tarot ve Numeroloji\n• Burç, Ay, Ritüeller, Hafta Kartı\n• Aşk yayılımları ve daha fazlası",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
@@ -822,10 +824,10 @@ TEXTS = {
         'reading_horo': "📅 Leyendo el horóscopo de {sign}...",
         'notif_status': "🔔 *Notificación diaria*\n\nEstado: *{status}*\n\n{desc}",
         'notif_enabled': "✅ Activada", 'notif_disabled': "❌ Desactivada",
-        'notif_on_msg': "🔔 ¡Notificaciones activadas! Cada mañana a recibirás la carta del día.",
+        'notif_on_msg': "🔔 ¡Notificaciones activadas! Cada mañana a las 8:00 recibirás la carta del día.",
         'notif_off_msg': "🔕 Notificaciones desactivadas.",
         'btn_notif_on': "🔔 Activar", 'btn_notif_off': "🔕 Desactivar",
-        'notif_desc': "Cada mañana a las Mystra envía la carta del día.\nLos suscriptores reciben interpretación completa.",
+        'notif_desc': "Cada mañana a las *8:00* Mystra envía la carta del día.\nLos suscriptores reciben interpretación completa.",
         'paywall': "🔒 *Límite de solicitudes gratuitas alcanzado*\n\nUsaste tus {free} solicitudes gratuitas.\n\n*Suscripción 30 días — {stars} ⭐*\n• Tarot y Numerología ilimitados\n• Horóscopo, Luna, Rituales, Carta semanal\n• Tiradas de amor y mucho más",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
@@ -985,10 +987,10 @@ TEXTS = {
         'reading_horo': "📅 Lendo o horóscopo de {sign}...",
         'notif_status': "🔔 *Notificação diária*\n\nStatus: *{status}*\n\n{desc}",
         'notif_enabled': "✅ Ativada", 'notif_disabled': "❌ Desativada",
-        'notif_on_msg': "🔔 Notificações ativadas! Todo dia você receberá a carta do dia.",
+        'notif_on_msg': "🔔 Notificações ativadas! Todo dia às 8:00 você receberá a carta do dia.",
         'notif_off_msg': "🔕 Notificações desativadas.",
         'btn_notif_on': "🔔 Ativar", 'btn_notif_off': "🔕 Desativar",
-        'notif_desc': "Todo dia às Mystra envia a carta do dia.\nAssinantes recebem interpretação completa.",
+        'notif_desc': "Todo dia às *8:00* Mystra envia a carta do dia.\nAssinantes recebem interpretação completa.",
         'paywall': "🔒 *Limite de solicitações gratuitas atingido*\n\nVocê usou suas {free} solicitações gratuitas.\n\n*Assinatura 30 dias — {stars} ⭐*\n• Tarot e Numerologia ilimitados\n• Horóscopo, Lua, Rituais, Carta semanal\n• Tiragens de amor e muito mais",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
@@ -1148,10 +1150,10 @@ TEXTS = {
         'reading_horo': "📅 Czytam horoskop dla {sign}...",
         'notif_status': "🔔 *Codzienna notyfikacja*\n\nStatus: *{status}*\n\n{desc}",
         'notif_enabled': "✅ Włączona", 'notif_disabled': "❌ Wyłączona",
-        'notif_on_msg': "🔔 Powiadomienia włączone! Każdego ranka dostaniesz kartę dnia.",
+        'notif_on_msg': "🔔 Powiadomienia włączone! Każdego ranka o 8:00 dostaniesz kartę dnia.",
         'notif_off_msg': "🔕 Powiadomienia wyłączone.",
         'btn_notif_on': "🔔 Włącz", 'btn_notif_off': "🔕 Wyłącz",
-        'notif_desc': "Każdego ranka Mystra wysyła kartę dnia.\nAbonenci otrzymują pełną interpretację.",
+        'notif_desc': "Każdego ranka o *8:00* Mystra wysyła kartę dnia.\nAbonenci otrzymują pełną interpretację.",
         'paywall': "🔒 *Limit bezpłatnych zapytań wyczerpany*\n\nWykorzystałeś wszystkie {free} bezpłatne zapytania.\n\n*Subskrypcja 30 dni — {stars} ⭐*\n• Nieograniczony Tarot i Numerologia\n• Horoskop, Księżyc, Rytuały, Karta tygodnia\n• Rozkłady miłosne i wiele więcej",
         'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
@@ -1805,35 +1807,74 @@ async def get_notification_users_for_hour(hour: int) -> list:
     return [r[0] for r in rows]
 
 # ─── CLAUDE ───────────────────────────────────────────────────────────────────
-async def ask_claude(prompt: str, lang: str = 'ru') -> str:
+async def ask_openai(prompt: str, lang: str = 'ru') -> str:
+    if not openai_client:
+        logger.error("OPENAI_API_KEY is not set")
+        return t(lang, 'error')
     try:
-        response = claude.messages.create(
-            model="claude-sonnet-4-6", max_tokens=1024,
-            system=SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru']),
-            messages=[{"role": "user", "content": prompt}]
+        response = await openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=1024,
+            messages=[
+                {"role": "developer", "content": SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])},
+                {"role": "user", "content": prompt},
+            ],
         )
-        return response.content[0].text
+        return response.choices[0].message.content or ""
     except Exception as e:
-        logger.error(f"Claude error: {e}")
+        logger.error(f"OpenAI error: {e}")
         return t(lang, 'error')
 
-async def ask_claude_vision(image_bytes: bytes, lang: str = 'ru') -> str:
+async def ask_openai_stream(prompt: str, lang: str = 'ru'):
+    if not openai_client:
+        logger.error("OPENAI_API_KEY is not set")
+        yield t(lang, 'error')
+        return
+    try:
+        stream = await openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=1500,
+            stream=True,
+            messages=[
+                {"role": "developer", "content": SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+    except Exception as e:
+        logger.error(f"OpenAI stream error: {e}")
+        yield t(lang, 'error')
+
+async def ask_openai_vision(image_bytes: bytes, lang: str = 'ru') -> str:
+    if not openai_client:
+        logger.error("OPENAI_API_KEY is not set")
+        return t(lang, 'error')
     try:
         image_b64 = base64.standard_b64encode(image_bytes).decode('utf-8')
         prompt_text = ("Проанализируй ладонь на этом фото. Дай подробное хиромантическое чтение." if lang == 'ru'
                        else "Analyze the palm in this photo. Give a detailed palmistry reading.")
-        response = claude.messages.create(
-            model="claude-sonnet-4-6", max_tokens=1500,
-            system=PALM_SYSTEM_PROMPTS.get(lang, PALM_SYSTEM_PROMPTS['ru']),
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}},
-                {"type": "text", "text": prompt_text},
-            ]}]
+        response = await openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            max_completion_tokens=1500,
+            messages=[
+                {"role": "developer", "content": PALM_SYSTEM_PROMPTS.get(lang, PALM_SYSTEM_PROMPTS['ru'])},
+                {"role": "user", "content": [
+                    {"type": "text", "text": prompt_text},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                ]},
+            ],
         )
-        return response.content[0].text
+        return response.choices[0].message.content or ""
     except Exception as e:
-        logger.error(f"Claude vision error: {e}")
+        logger.error(f"OpenAI vision error: {e}")
         return t(lang, 'error')
+
+ask_claude = ask_openai
+ask_claude_stream = ask_openai_stream
+ask_claude_vision = ask_openai_vision
 
 user_states: dict = {}
 
@@ -2111,32 +2152,56 @@ async def _edit_or_send(chat_id: int, msg_id, text: str, markup):
             pass
     await bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
 
+processing_users = set()
+
 async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt_msg_id,
                       prompt: str, lang: str, result_header: str):
-    if prompt_msg_id:
-        try:
-            await bot.edit_message_text(t(lang,'processing'), chat_id=chat_id, message_id=prompt_msg_id, parse_mode="Markdown")
-        except Exception:
-            prompt_msg_id = None
-    if not prompt_msg_id:
-        sent = await bot.send_message(uid, t(lang,'processing'), parse_mode="Markdown")
-        prompt_msg_id = sent.message_id
-        chat_id = uid
-    await log_request(uid, username, action)
-    streak, milestone = await update_streak(uid)
-    answer = await ask_claude(prompt, lang)
-    result = f"{result_header}\n\n{answer}" if result_header else answer
-    back_to = ACTION_BACK.get(action, "back_main")
-    await _edit_or_send(chat_id, prompt_msg_id, result, result_keyboard(lang, back_to))
-    await save_reading_history(uid, action, result_header, result)
-    if milestone:
-        await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
+    if uid in processing_users:
+        return  # Игнорируем запрос, если гадание уже в процессе
+    
+    processing_users.add(uid)
+    try:
+        if prompt_msg_id:
+            try:
+                await bot.edit_message_text(t(lang,'processing'), chat_id=chat_id, message_id=prompt_msg_id, parse_mode="Markdown")
+            except Exception:
+                prompt_msg_id = None
+        if not prompt_msg_id:
+            sent = await bot.send_message(uid, t(lang,'processing'), parse_mode="Markdown")
+            prompt_msg_id = sent.message_id
+            chat_id = uid
+            
+        await log_request(uid, username, action)
+        streak, milestone = await update_streak(uid)
+        
+        # Потоковый вывод ответа (Streaming)
+        answer = ""
+        last_update = time.time()
+        async for chunk in ask_claude_stream(prompt, lang):
+            answer += chunk
+            # Обновляем сообщение не чаще 1 раза в 1.5 секунды
+            if time.time() - last_update > 1.5:
+                preview = f"{result_header}\n\n{answer} ⏳" if result_header else f"{answer} ⏳"
+                try:
+                    await bot.edit_message_text(preview, chat_id=chat_id, message_id=prompt_msg_id, parse_mode="Markdown")
+                except Exception:
+                    pass # Игнорируем ошибки (например, если markdown временно сломан из-за обрезки)
+                last_update = time.time()
+                
+        result = f"{result_header}\n\n{answer}" if result_header else answer
+        back_to = ACTION_BACK.get(action, "back_main")
+        await _edit_or_send(chat_id, prompt_msg_id, result, result_keyboard(lang, back_to))
+        await save_reading_history(uid, action, result_header, result)
+        if milestone:
+            await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
+    finally:
+        processing_users.discard(uid)
 
 # ─── DAILY BROADCAST ──────────────────────────────────────────────────────────
 async def send_daily_broadcast(current_hour: int = 8):
     today = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y")
     today_seed = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
-    # канал — только
+    # канал — только в 8:00
     if current_hour == 8 and CHANNEL_ID:
         channel_card = random.choice(TAROT_CARDS)
         try:
@@ -4062,6 +4127,14 @@ async def handle_message(message: Message):
         await message.delete()
     except Exception:
         pass
+
+    # Предупреждение для голосовых сообщений и видеокружков (заглушка до внедрения Speech-to-Text)
+    if message.voice or message.video_note or message.audio:
+        if uid in user_states:
+            user_states[uid] = state  # Возвращаем состояние ожидания ввода
+        msg_text = "🎙 Я пока не умею слушать голосовые сообщения. Пожалуйста, напиши свой вопрос текстом." if lang == 'ru' else "🎙 I can't listen to voice messages yet. Please write your question in text."
+        await message.reply(msg_text)
+        return
 
     text = message.text or ""
 
