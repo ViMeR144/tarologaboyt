@@ -2441,6 +2441,52 @@ async def communication_style_kb(user_id: int, lang: str = 'ru'):
     kb.adjust(2, 2, 2, 1, 1)
     return kb.as_markup()
 
+async def communication_style_text(user_id: int, lang: str = 'ru') -> str:
+    mode = await get_response_mode(user_id)
+    tone = await get_tone_style(user_id)
+    astro = await get_astro_tarot_enabled(user_id)
+    if lang == 'ru':
+        mode_label = "Коротко" if mode == "short" else "Подробно"
+        tone_label = {
+            "soft": "Мягко",
+            "balanced": "Обычно",
+            "mystic": "Мистически",
+            "direct": "Прямо",
+        }.get(tone, "Обычно")
+        astro_label = "включен" if astro else "выключен"
+        return (
+            "🗣 *Стиль общения*\n\n"
+            f"Сейчас:\n• Длина ответа: *{mode_label}*\n• Манера ответа: *{tone_label}*\n• Astro+Tarot: *{astro_label}*\n\n"
+            "Что это меняет:\n"
+            "• `Коротко` — суть без лишнего\n"
+            "• `Подробно` — глубже и с нюансами\n"
+            "• `Мягко` — деликатнее и поддерживающе\n"
+            "• `Обычно` — спокойный стандартный стиль\n"
+            "• `Мистически` — атмосфернее, но понятно\n"
+            "• `Прямо` — честно и без сглаживания\n"
+            "• `Astro+Tarot` — добавляет знак зодиака в интерпретацию"
+        )
+    mode_label = "Short" if mode == "short" else "Detailed"
+    tone_label = {
+        "soft": "Soft",
+        "balanced": "Balanced",
+        "mystic": "Mystic",
+        "direct": "Direct",
+    }.get(tone, "Balanced")
+    astro_label = "enabled" if astro else "disabled"
+    return (
+        "*Communication Style*\n\n"
+        f"Current:\n• Answer length: *{mode_label}*\n• Tone: *{tone_label}*\n• Astro+Tarot: *{astro_label}*\n\n"
+        "What it changes:\n"
+        "• `Short` — concise and to the point\n"
+        "• `Detailed` — deeper and more nuanced\n"
+        "• `Soft` — gentler and more supportive\n"
+        "• `Balanced` — calm default style\n"
+        "• `Mystic` — more atmospheric, still clear\n"
+        "• `Direct` — honest and straightforward\n"
+        "• `Astro+Tarot` — includes zodiac context in readings"
+    )
+
 async def settings_kb(user_id: int, lang: str = 'ru'):
     hour = await get_notify_hour(user_id)
     kb = InlineKeyboardBuilder()
@@ -2817,6 +2863,18 @@ async def create_yukassa_payment(uid: int, payment_method_type: str | None = Non
     except Exception as e:
         logger.error(f"YuKassa create payment error: {e}")
         return None
+
+def extract_yookassa_error(data: dict | None) -> str:
+    if not isinstance(data, dict):
+        return "unknown error"
+    pieces = [
+        data.get("type"),
+        data.get("id"),
+        data.get("code"),
+        data.get("description"),
+    ]
+    text = " | ".join(str(p) for p in pieces if p)
+    return text or "unknown error"
 
 async def create_yukassa_sbp_payment(uid: int) -> dict | None:
     return await create_yukassa_payment(uid, payment_method_type="sbp")
@@ -3748,7 +3806,7 @@ async def settings_menu_cb(callback: CallbackQuery):
 async def communication_style_menu_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
-    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
+    await safe_edit(callback, await communication_style_text(uid, lang), await communication_style_kb(uid, lang))
     await callback.answer()
 
 @dp.callback_query(F.data.in_(["resp_mode_short", "resp_mode_detailed"]))
@@ -3757,7 +3815,7 @@ async def response_mode_cb(callback: CallbackQuery):
     lang = await get_user_lang(uid)
     mode = "short" if callback.data == "resp_mode_short" else "detailed"
     await set_response_mode(uid, mode)
-    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
+    await safe_edit(callback, await communication_style_text(uid, lang), await communication_style_kb(uid, lang))
     await callback.answer("Режим ответа обновлен" if lang == "ru" else "Answer mode updated")
 
 @dp.callback_query(F.data.in_(["tone_soft", "tone_balanced", "tone_mystic", "tone_direct"]))
@@ -3766,7 +3824,7 @@ async def tone_style_cb(callback: CallbackQuery):
     lang = await get_user_lang(uid)
     style = callback.data.replace("tone_", "", 1)
     await set_tone_style(uid, style)
-    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
+    await safe_edit(callback, await communication_style_text(uid, lang), await communication_style_kb(uid, lang))
     await callback.answer("Стиль ответа обновлен" if lang == "ru" else "Answer style updated")
 
 @dp.callback_query(F.data == "toggle_astro_tarot")
@@ -3774,7 +3832,7 @@ async def toggle_astro_tarot_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     enabled = await toggle_astro_tarot(uid)
-    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
+    await safe_edit(callback, await communication_style_text(uid, lang), await communication_style_kb(uid, lang))
     await callback.answer(("Astro+Tarot включен" if enabled else "Astro+Tarot выключен") if lang == "ru" else ("Astro+Tarot enabled" if enabled else "Astro+Tarot disabled"))
 
 @dp.callback_query(F.data == "tarot_menu")
@@ -4303,7 +4361,22 @@ async def buy_rub_cb(callback: CallbackQuery):
     await callback.answer()
     payment = await create_yukassa_payment(uid)
     if not payment or "id" not in payment:
-        await callback.message.answer(t(lang, 'sbp_error'), parse_mode="Markdown"); return
+        error_text = extract_yookassa_error(payment)
+        if ADMIN_ID:
+            try:
+                await bot.send_message(
+                    ADMIN_ID,
+                    f"YooKassa create payment failed for `{uid}`\n`{error_text}`",
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+        user_text = (
+            f"❌ Ошибка создания платежа.\n\nПричина: `{error_text}`\n\nПроверьте shopId/secretKey и включенные способы оплаты в кабинете YooKassa."
+            if lang == "ru" else
+            f"❌ Payment creation failed.\n\nReason: `{error_text}`\n\nCheck your YooKassa shopId/secretKey and enabled payment methods."
+        )
+        await callback.message.answer(user_text, parse_mode="Markdown"); return
     payment_id = payment["id"]
     confirm_url = payment.get("confirmation", {}).get("confirmation_url", "")
     if not confirm_url:
