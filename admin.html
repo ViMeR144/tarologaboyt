@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Aether Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0C0C0F;--bg2:#111116;--bg3:#16161D;--bg4:#1C1C25;
+      --gold:#C9A84C;--gold-l:#E2C97E;--gold-d:#9A7A2E;
+      --text:#EDE8DC;--muted:#7A7870;
+      --border:rgba(201,168,76,.18);
+      --green:#6fcf97;--red:#eb5757;--orange:#f2994a;--blue:#56CCF2;
+      --radius:12px;
+    }
+    body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+    /* LOGIN */
+    #loginScreen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:100}
+    .login-box{width:360px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:48px 40px;text-align:center}
+    .login-logo{font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--gold);letter-spacing:.12em;margin-bottom:6px}
+    .login-sub{font-size:.6rem;letter-spacing:.22em;color:var(--muted);margin-bottom:36px}
+    .login-input{width:100%;background:var(--bg4);border:1px solid var(--border);border-radius:8px;padding:13px 16px;margin-bottom:14px;font-family:'Montserrat',sans-serif;font-size:.82rem;color:var(--text);outline:none;transition:border-color .2s}
+    .login-input:focus{border-color:rgba(201,168,76,.5)}
+    .login-btn{width:100%;padding:13px;background:var(--gold);border:none;border-radius:4px;color:var(--bg);font-family:'Montserrat',sans-serif;font-size:.72rem;letter-spacing:.18em;font-weight:700;cursor:pointer;transition:opacity .2s}
+    .login-btn:hover{opacity:.88}
+    .login-err{color:var(--red);font-size:.72rem;margin-top:12px;min-height:18px}
+
+    /* SHELL */
+    #app{display:none;min-height:100vh}
+    .topbar{height:58px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:12px;position:sticky;top:0;z-index:50}
+    .topbar-logo{font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:var(--gold);letter-spacing:.1em}
+    .topbar-badge{font-size:.52rem;letter-spacing:.16em;background:rgba(201,168,76,.1);color:var(--gold);border:1px solid var(--border);border-radius:20px;padding:3px 10px}
+    .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+    .tbtn{background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:.62rem;letter-spacing:.12em;padding:6px 14px;cursor:pointer;transition:color .2s,border-color .2s;font-family:'Montserrat',sans-serif;text-decoration:none;display:inline-flex;align-items:center}
+    .tbtn:hover{color:var(--text);border-color:var(--muted)}
+
+    /* TABS */
+    .tabs-bar{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;padding:0 24px;gap:4px}
+    .tab-btn{padding:14px 18px;font-size:.65rem;letter-spacing:.14em;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s;font-family:'Montserrat',sans-serif;white-space:nowrap}
+    .tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+    .tab-btn:hover{color:var(--text)}
+    .tab-content{display:none}
+    .tab-content.active{display:block}
+
+    .content{padding:28px 24px;max-width:1300px;margin:0 auto}
+
+    /* STATS GRID */
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:24px}
+    .stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:20px 18px}
+    .stat-label{font-size:.56rem;letter-spacing:.18em;color:var(--muted);margin-bottom:8px}
+    .stat-value{font-family:'Cormorant Garamond',serif;font-size:2rem;color:var(--gold);line-height:1}
+    .stat-sub{font-size:.6rem;color:var(--muted);margin-top:4px}
+
+    /* CHART */
+    .chart-wrap{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:22px 20px;margin-bottom:24px}
+    .chart-title{font-size:.62rem;letter-spacing:.18em;color:var(--muted);margin-bottom:16px}
+    .chart-tabs{display:flex;gap:8px;margin-bottom:16px}
+    .chart-tab{font-size:.6rem;letter-spacing:.12em;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-family:'Montserrat',sans-serif;transition:all .2s}
+    .chart-tab.active{background:rgba(201,168,76,.12);color:var(--gold);border-color:rgba(201,168,76,.3)}
+    canvas{width:100%!important}
+
+    /* RATING BARS */
+    .rating-bars{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:20px 18px;margin-bottom:24px}
+    .rb-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+    .rb-label{font-size:.72rem;color:var(--gold);width:20px;flex-shrink:0}
+    .rb-track{flex:1;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
+    .rb-fill{height:100%;background:linear-gradient(90deg,var(--gold-d),var(--gold-l));border-radius:3px;transition:width .6s ease}
+    .rb-count{font-size:.65rem;color:var(--muted);width:28px;text-align:right}
+
+    /* TOOLBAR */
+    .toolbar{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+    .search-wrap{position:relative;flex:1;min-width:180px}
+    .search-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 14px 9px 36px;font-family:'Montserrat',sans-serif;font-size:.76rem;color:var(--text);outline:none;transition:border-color .2s}
+    .search-input:focus{border-color:rgba(201,168,76,.4)}
+    .si{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+    .filter-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:.66rem;letter-spacing:.1em;padding:9px 14px;cursor:pointer;transition:color .2s,border-color .2s;font-family:'Montserrat',sans-serif;white-space:nowrap}
+    .filter-btn.active{color:var(--gold);border-color:rgba(201,168,76,.4)}
+    .act-btn{border:none;border-radius:8px;padding:9px 14px;font-size:.66rem;letter-spacing:.1em;cursor:pointer;font-family:'Montserrat',sans-serif;white-space:nowrap;transition:opacity .2s}
+    .act-btn:hover{opacity:.82}
+    .btn-danger{background:rgba(235,87,87,.12);color:var(--red)}
+    .btn-export{background:rgba(86,204,242,.1);color:var(--blue)}
+
+    /* TABLE */
+    .table-wrap{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);overflow:auto}
+    .rev-table{width:100%;border-collapse:collapse;min-width:700px}
+    .rev-table th{background:var(--bg4);padding:11px 14px;text-align:left;font-size:.58rem;letter-spacing:.16em;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);white-space:nowrap}
+    .rev-table td{padding:12px 14px;border-bottom:1px solid rgba(201,168,76,.05);vertical-align:top}
+    .rev-table tr.hidden-row td{opacity:.4}
+    .rev-table tr.pinned-row td{background:rgba(201,168,76,.03)}
+    .rev-table tr:last-child td{border-bottom:none}
+    .rev-table tr:hover td{background:rgba(201,168,76,.025)}
+
+    .td-id{color:var(--muted);font-size:.68rem;width:36px}
+    .td-name{font-size:.78rem;font-weight:600;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+    .star-s{color:var(--gold);font-size:.75rem}
+    .star-s.e{color:rgba(201,168,76,.15)}
+    .td-body{font-size:.73rem;color:var(--muted);max-width:280px;line-height:1.55}
+    .td-date{font-size:.62rem;color:var(--muted);white-space:nowrap}
+    .td-ip{font-size:.58rem;color:var(--muted);font-family:monospace}
+    .actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+    .badge{font-size:.52rem;letter-spacing:.1em;padding:2px 7px;border-radius:20px;white-space:nowrap}
+    .badge-ok{background:rgba(111,207,151,.12);color:var(--green);border:1px solid rgba(111,207,151,.22)}
+    .badge-hidden{background:rgba(235,87,87,.1);color:var(--red);border:1px solid rgba(235,87,87,.22)}
+    .badge-pin{background:rgba(201,168,76,.12);color:var(--gold);border:1px solid var(--border)}
+
+    .btn-xs{border:none;border-radius:5px;padding:5px 9px;font-size:.6rem;letter-spacing:.08em;cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:600;transition:opacity .15s,transform .1s;white-space:nowrap}
+    .btn-xs:hover{opacity:.8;transform:translateY(-1px)}
+    .bx-show{background:rgba(111,207,151,.15);color:var(--green)}
+    .bx-hide{background:rgba(242,153,74,.12);color:var(--orange)}
+    .bx-pin{background:rgba(201,168,76,.12);color:var(--gold)}
+    .bx-edit{background:rgba(86,204,242,.1);color:var(--blue)}
+    .bx-del{background:rgba(235,87,87,.12);color:var(--red)}
+    .bx-ban{background:rgba(235,87,87,.08);color:var(--red)}
+    .bx-reply{background:rgba(111,207,151,.1);color:var(--green)}
+
+    /* MODAL */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
+    .modal-bg.open{display:flex}
+    .modal{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:32px;width:100%;max-width:520px}
+    .modal h3{font-family:'Cormorant Garamond',serif;font-size:1.2rem;color:var(--gold-l);margin-bottom:20px}
+    .modal-input{width:100%;background:var(--bg4);border:1px solid var(--border);border-radius:8px;padding:11px 14px;margin-bottom:12px;font-family:'Montserrat',sans-serif;font-size:.78rem;color:var(--text);outline:none;resize:none;transition:border-color .2s}
+    .modal-input:focus{border-color:rgba(201,168,76,.45)}
+    .modal-row{display:flex;gap:10px;margin-top:4px}
+    .modal-btn{flex:1;padding:11px;border:none;border-radius:6px;font-family:'Montserrat',sans-serif;font-size:.68rem;letter-spacing:.14em;font-weight:700;cursor:pointer;transition:opacity .2s}
+    .modal-btn:hover{opacity:.85}
+    .mb-save{background:var(--gold);color:var(--bg)}
+    .mb-cancel{background:var(--bg4);color:var(--muted)}
+
+    /* BANS */
+    .ban-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;display:flex;align-items:center;gap:14px;margin-bottom:10px}
+    .ban-hash{font-family:monospace;font-size:.72rem;color:var(--muted);flex:1}
+    .ban-reason{font-size:.72rem;color:var(--text)}
+    .ban-date{font-size:.6rem;color:var(--muted);white-space:nowrap}
+
+    /* LOGS */
+    .log-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid rgba(201,168,76,.05)}
+    .log-row:last-child{border-bottom:none}
+    .log-action{font-size:.58rem;letter-spacing:.12em;padding:3px 8px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+    .log-DELETE{background:rgba(235,87,87,.15);color:var(--red)}
+    .log-TOGGLE{background:rgba(242,153,74,.12);color:var(--orange)}
+    .log-PIN{background:rgba(201,168,76,.12);color:var(--gold)}
+    .log-EDIT{background:rgba(86,204,242,.1);color:var(--blue)}
+    .log-REPLY{background:rgba(111,207,151,.12);color:var(--green)}
+    .log-BAN,.log-UNBAN{background:rgba(235,87,87,.1);color:var(--red)}
+    .log-SETTINGS,.log-EXPORT,.log-BULK_DELETE,.log-LOGIN{background:rgba(201,168,76,.08);color:var(--muted)}
+    .log-details{font-size:.72rem;color:var(--muted);flex:1}
+    .log-time{font-size:.6rem;color:var(--muted);white-space:nowrap;flex-shrink:0}
+
+    /* SETTINGS */
+    .settings-section{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:18px}
+    .settings-title{font-size:.62rem;letter-spacing:.18em;color:var(--muted);margin-bottom:18px}
+    .setting-row{margin-bottom:14px}
+    .setting-label{font-size:.62rem;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+    .setting-input{width:100%;background:var(--bg4);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-family:'Montserrat',sans-serif;font-size:.78rem;color:var(--text);outline:none;transition:border-color .2s}
+    .setting-input:focus{border-color:rgba(201,168,76,.45)}
+    .save-btn{padding:11px 28px;background:var(--gold);border:none;border-radius:4px;color:var(--bg);font-family:'Montserrat',sans-serif;font-size:.68rem;letter-spacing:.18em;font-weight:700;cursor:pointer;transition:opacity .2s}
+    .save-btn:hover{opacity:.88}
+    .tg-test-btn{padding:11px 18px;background:rgba(111,207,151,.12);border:1px solid rgba(111,207,151,.25);border-radius:4px;color:var(--green);font-family:'Montserrat',sans-serif;font-size:.68rem;letter-spacing:.14em;cursor:pointer;margin-left:10px;transition:opacity .2s}
+    .tg-test-btn:hover{opacity:.82}
+
+    .empty-row{text-align:center;padding:40px;color:var(--muted);font-size:.78rem}
+
+    /* TOAST */
+    #toast{position:fixed;bottom:20px;right:20px;z-index:999;background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:8px;padding:12px 18px;font-size:.74rem;color:var(--text);transform:translateX(130%);transition:transform .3s ease;pointer-events:none;max-width:300px}
+    #toast.show{transform:none}
+    #toast.err{border-left-color:var(--red)}
+    #toast.ok{border-left-color:var(--green)}
+
+    @media(max-width:640px){
+      .content{padding:16px 12px}
+      .stats-grid{grid-template-columns:1fr 1fr}
+      .tabs-bar{overflow-x:auto;gap:0}
+      .tab-btn{padding:12px 12px;font-size:.58rem}
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">✦ AETHER</div>
+    <div class="login-sub">ПАНЕЛЬ УПРАВЛЕНИЯ</div>
+    <input id="passInput" class="login-input" type="password" placeholder="Пароль администратора"/>
+    <button class="login-btn" onclick="doLogin()">ВОЙТИ</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <span class="topbar-logo">AETHER TAROT</span>
+    <span class="topbar-badge">ADMIN</span>
+    <div class="topbar-right">
+      <span id="topbarTime" style="font-size:.62rem;color:var(--muted)"></span>
+      <a href="/" class="tbtn">← НА САЙТ</a>
+      <button class="tbtn" onclick="doLogout()">ВЫЙТИ</button>
+    </div>
+  </div>
+
+  <div class="tabs-bar">
+    <button class="tab-btn active" onclick="switchTab('reviews')">ОТЗЫВЫ</button>
+    <button class="tab-btn"       onclick="switchTab('analytics')">АНАЛИТИКА</button>
+    <button class="tab-btn"       onclick="switchTab('bans')">БЛОКИРОВКИ</button>
+    <button class="tab-btn"       onclick="switchTab('logs')">ЛОГИ</button>
+    <button class="tab-btn"       onclick="switchTab('settings')">НАСТРОЙКИ</button>
+  </div>
+
+  <!-- ══ TAB: ОТЗЫВЫ ══ -->
+  <div class="tab-content active" id="tab-reviews">
+    <div class="content">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">ВСЕГО</div><div class="stat-value" id="sTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">ВИДИМЫХ</div><div class="stat-value" id="sApproved">—</div></div>
+        <div class="stat-card"><div class="stat-label">СКРЫТЫХ</div><div class="stat-value" id="sHidden" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="stat-label">ЗА 24 Ч</div><div class="stat-value" id="sToday">—</div></div>
+        <div class="stat-card"><div class="stat-label">РЕЙТИНГ</div><div class="stat-value" id="sAvg">—</div><div class="stat-sub">из 5.0</div></div>
+        <div class="stat-card"><div class="stat-label">БАНОВ</div><div class="stat-value" id="sBans" style="color:var(--orange)">—</div></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg class="si" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input id="searchInput" class="search-input" placeholder="Поиск по имени или тексту…" oninput="onSearch()"/>
+        </div>
+        <button class="filter-btn active" id="fAll"     onclick="setFilter('all')">ВСЕ</button>
+        <button class="filter-btn"        id="fVisible" onclick="setFilter('visible')">ВИДИМЫЕ</button>
+        <button class="filter-btn"        id="fHidden"  onclick="setFilter('hidden')">СКРЫТЫЕ</button>
+        <button class="filter-btn"        id="fPinned"  onclick="setFilter('pinned')">ЗАКРЕПЛЁННЫЕ</button>
+        <button class="act-btn btn-export" onclick="exportCsv()">↓ CSV</button>
+        <button class="act-btn btn-danger" onclick="deleteAllHidden()">УДАЛИТЬ СКРЫТЫЕ</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="rev-table">
+          <thead><tr>
+            <th>#</th><th>ИМЯ</th><th>★</th><th>ОТЗЫВ</th>
+            <th>ДАТА</th><th>IP-ХЭШ</th><th>СТАТУС</th><th>ДЕЙСТВИЯ</th>
+          </tr></thead>
+          <tbody id="reviewsBody"><tr><td colspan="8" class="empty-row">Загрузка…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: АНАЛИТИКА ══ -->
+  <div class="tab-content" id="tab-analytics">
+    <div class="content">
+      <div class="stats-grid" style="margin-bottom:24px">
+        <div class="stat-card"><div class="stat-label">ВИЗИТОВ СЕГОДНЯ</div><div class="stat-value" id="aToday">—</div></div>
+        <div class="stat-card"><div class="stat-label">ВИЗИТОВ ЗА МЕСЯЦ</div><div class="stat-value" id="aMonth">—</div></div>
+        <div class="stat-card"><div class="stat-label">ОТЗЫВОВ ЗА МЕСЯЦ</div><div class="stat-value" id="aRevMonth">—</div></div>
+        <div class="stat-card"><div class="stat-label">СРЕДНИЙ БАЛЛ</div><div class="stat-value" id="aAvg">—</div></div>
+      </div>
+
+      <div class="chart-wrap">
+        <div class="chart-title">ДИНАМИКА ЗА 30 ДНЕЙ</div>
+        <div class="chart-tabs">
+          <button class="chart-tab active" onclick="switchChart('views')">ВИЗИТЫ</button>
+          <button class="chart-tab"        onclick="switchChart('reviews')">ОТЗЫВЫ</button>
+        </div>
+        <canvas id="mainChart" height="180"></canvas>
+      </div>
+
+      <div class="rating-bars">
+        <div class="chart-title" style="margin-bottom:14px">РАСПРЕДЕЛЕНИЕ ОЦЕНОК</div>
+        <div id="ratingBars"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: БЛОКИРОВКИ ══ -->
+  <div class="tab-content" id="tab-bans">
+    <div class="content">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="font-size:.62rem;letter-spacing:.18em;color:var(--muted)">ЗАБЛОКИРОВАННЫЕ IP-ХЭШИ</div>
+      </div>
+      <div id="bansList"><div class="empty-row">Загрузка…</div></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: ЛОГИ ══ -->
+  <div class="tab-content" id="tab-logs">
+    <div class="content">
+      <div style="font-size:.62rem;letter-spacing:.18em;color:var(--muted);margin-bottom:20px">ЖУРНАЛ ДЕЙСТВИЙ (последние 200)</div>
+      <div class="table-wrap" style="padding:0 20px">
+        <div id="logsList"><div class="empty-row">Загрузка…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: НАСТРОЙКИ ══ -->
+  <div class="tab-content" id="tab-settings">
+    <div class="content" style="max-width:680px">
+
+      <div class="settings-section">
+        <div class="settings-title">НАСТРОЙКИ САЙТА</div>
+        <div class="setting-row">
+          <div class="setting-label">ССЫЛКА НА TELEGRAM БОТ</div>
+          <input id="sBotLink" class="setting-input" placeholder="https://t.me/ваш_бот"/>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">ТЕКСТ КНОПКИ CTA</div>
+          <input id="sCtaText" class="setting-input" placeholder="НАЧАТЬ РАСКЛАД СЕЙЧАС"/>
+        </div>
+        <button class="save-btn" onclick="saveSettings()">СОХРАНИТЬ</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">TELEGRAM УВЕДОМЛЕНИЯ О НОВЫХ ОТЗЫВАХ</div>
+        <div class="setting-row">
+          <div class="setting-label">BOT TOKEN (из @BotFather)</div>
+          <input id="sTgToken" class="setting-input" placeholder="1234567890:ABCdef..."/>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">CHAT ID (твой Telegram ID)</div>
+          <input id="sTgChat" class="setting-input" placeholder="123456789"/>
+          <div style="font-size:.6rem;color:var(--muted);margin-top:6px">Узнать свой ID: напиши @userinfobot в Telegram</div>
+        </div>
+        <button class="save-btn" onclick="saveTgSettings()">СОХРАНИТЬ</button>
+        <button class="tg-test-btn" onclick="testTg()">ТЕСТ ✓</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">БЕЗОПАСНОСТЬ</div>
+        <div style="font-size:.72rem;color:var(--muted);line-height:1.8">
+          Для смены пароля установи переменную <code style="color:var(--gold)">ADMIN_PASSWORD</code> в Railway.<br>
+          Для смены секрета JWT установи <code style="color:var(--gold)">ADMIN_SECRET</code> в Railway.<br>
+          После смены секрета все активные сессии будут сброшены.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО — РЕДАКТИРОВАНИЕ -->
+<div class="modal-bg" id="editModal">
+  <div class="modal">
+    <h3>Редактировать отзыв</h3>
+    <input id="editName"  class="modal-input" placeholder="Имя"/>
+    <select id="editRating" class="modal-input">
+      <option value="5">★★★★★ — 5</option>
+      <option value="4">★★★★☆ — 4</option>
+      <option value="3">★★★☆☆ — 3</option>
+      <option value="2">★★☆☆☆ — 2</option>
+      <option value="1">★☆☆☆☆ — 1</option>
+    </select>
+    <textarea id="editBody" class="modal-input" rows="4" placeholder="Текст отзыва"></textarea>
+    <div class="modal-row">
+      <button class="modal-btn mb-save"   onclick="saveEdit()">СОХРАНИТЬ</button>
+      <button class="modal-btn mb-cancel" onclick="closeModal('editModal')">ОТМЕНА</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО — ОТВЕТ -->
+<div class="modal-bg" id="replyModal">
+  <div class="modal">
+    <h3>Ответ администратора</h3>
+    <textarea id="replyText" class="modal-input" rows="4" placeholder="Твой ответ под отзывом на сайте…"></textarea>
+    <div style="font-size:.62rem;color:var(--muted);margin-bottom:14px">Оставь поле пустым чтобы удалить ответ</div>
+    <div class="modal-row">
+      <button class="modal-btn mb-save"   onclick="saveReply()">СОХРАНИТЬ</button>
+      <button class="modal-btn mb-cancel" onclick="closeModal('replyModal')">ОТМЕНА</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+var token   = localStorage.getItem('admin_token') || '';
+var allRevs = [];
+var filter  = 'all';
+var searchQ = '';
+var editId  = null;
+var replyId = null;
+var statsData = {};
+var activeChart = 'views';
+var chartCanvas, chartCtx;
+
+/* ══ LOGIN ══ */
+document.getElementById('passInput').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+function doLogin() {
+  var pass = document.getElementById('passInput').value;
+  fetch('/api/admin/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:pass}) })
+  .then(r=>r.json()).then(d=>{
+    if (d.token) { token=d.token; localStorage.setItem('admin_token',token); showApp(); }
+    else document.getElementById('loginErr').textContent = d.error||'Неверный пароль';
+  }).catch(()=>{ document.getElementById('loginErr').textContent='Ошибка соединения'; });
+}
+function doLogout() { localStorage.removeItem('admin_token'); token=''; location.reload(); }
+
+function showApp() {
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('app').style.display='block';
+  loadStats(); loadReviews(); loadSettings();
+  updateClock(); setInterval(updateClock, 30000);
+  chartCanvas = document.getElementById('mainChart');
+  chartCtx    = chartCanvas.getContext('2d');
+}
+if (token) {
+  fetch('/api/admin/stats',{headers:{Authorization:'Bearer '+token}})
+  .then(r=>{ if(r.ok) showApp(); else { localStorage.removeItem('admin_token'); token=''; } }).catch(()=>{});
+}
+
+function updateClock() {
+  document.getElementById('topbarTime').textContent =
+    new Date().toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+}
+
+/* ══ TABS ══ */
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>{
+    b.classList.toggle('active', b.textContent.trim()===name.toUpperCase()||
+      ['ОТЗЫВЫ','АНАЛИТИКА','БЛОКИРОВКИ','ЛОГИ','НАСТРОЙКИ'][i]===({'reviews':'ОТЗЫВЫ','analytics':'АНАЛИТИКА','bans':'БЛОКИРОВКИ','logs':'ЛОГИ','settings':'НАСТРОЙКИ'}[name]));
+  });
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if (name==='analytics') { loadStats(); }
+  if (name==='bans')      loadBans();
+  if (name==='logs')      loadLogs();
+}
+
+/* ══ STATS ══ */
+function loadStats() {
+  fetch('/api/admin/stats',{headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(d=>{
+    statsData = d;
+    document.getElementById('sTotal').textContent    = d.total;
+    document.getElementById('sApproved').textContent = d.approved;
+    document.getElementById('sHidden').textContent   = d.hidden;
+    document.getElementById('sToday').textContent    = d.today;
+    document.getElementById('sAvg').textContent      = d.avg||'—';
+    document.getElementById('sBans').textContent     = d.bans||0;
+    renderRatingBars(d.byRating, d.approved);
+
+    var todayViews  = (d.dailyViews||[]).find(v=>v.date===new Date().toISOString().slice(0,10));
+    var monthViews  = (d.dailyViews||[]).reduce((s,v)=>s+parseInt(v.visits),0);
+    var monthRevs   = (d.dailyRevs||[]).reduce((s,v)=>s+parseInt(v.count),0);
+    if (document.getElementById('aToday')) {
+      document.getElementById('aToday').textContent    = todayViews ? todayViews.visits : 0;
+      document.getElementById('aMonth').textContent    = monthViews;
+      document.getElementById('aRevMonth').textContent = monthRevs;
+      document.getElementById('aAvg').textContent      = d.avg||'—';
+    }
+    if (chartCanvas) drawChart();
+  });
+}
+
+function renderRatingBars(byRating, total) {
+  var map={};
+  (byRating||[]).forEach(r=>{ map[r.rating]=parseInt(r.count); });
+  var html='';
+  for(var i=5;i>=1;i--) {
+    var cnt=map[i]||0, pct=total>0?Math.round(cnt/total*100):0;
+    html+='<div class="rb-row"><div class="rb-label">'+i+'★</div>'
+      +'<div class="rb-track"><div class="rb-fill" style="width:'+pct+'%"></div></div>'
+      +'<div class="rb-count">'+cnt+'</div></div>';
+  }
+  document.getElementById('ratingBars').innerHTML=html;
+}
+
+/* ══ CHART ══ */
+function switchChart(type) {
+  activeChart=type;
+  document.querySelectorAll('.chart-tab').forEach(b=>b.classList.toggle('active', b.textContent===({'views':'ВИЗИТЫ','reviews':'ОТЗЫВЫ'}[type])));
+  drawChart();
+}
+
+function drawChart() {
+  if (!chartCtx || !statsData) return;
+  var data = activeChart==='views' ? (statsData.dailyViews||[]) : (statsData.dailyRevs||[]);
+  var labels=[], values=[];
+  var days=30;
+  for(var i=days-1;i>=0;i--) {
+    var d=new Date(); d.setDate(d.getDate()-i);
+    var key=d.toISOString().slice(0,10);
+    var found=data.find(r=>(r.date||'').slice(0,10)===key);
+    labels.push(d.getDate());
+    values.push(found ? parseInt(found.visits||found.count) : 0);
+  }
+  var W=chartCanvas.offsetWidth||600, H=180;
+  chartCanvas.width=W; chartCanvas.height=H;
+  var ctx=chartCtx;
+  ctx.clearRect(0,0,W,H);
+  var max=Math.max(...values,1);
+  var pad=20, barW=Math.floor((W-pad*2)/labels.length)-2;
+  values.forEach((v,i)=>{
+    var x=pad+i*((W-pad*2)/labels.length);
+    var h=Math.floor((v/max)*(H-pad-10));
+    var y=H-pad-h;
+    var grad=ctx.createLinearGradient(0,y,0,H-pad);
+    grad.addColorStop(0,'rgba(201,168,76,.8)');
+    grad.addColorStop(1,'rgba(201,168,76,.1)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.roundRect(x,y,Math.max(barW,2),h,3);
+    ctx.fill();
+    if (labels.length<=20 && i%Math.ceil(labels.length/10)===0) {
+      ctx.fillStyle='rgba(122,120,112,.5)';
+      ctx.font='10px Montserrat,sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(labels[i],x+barW/2,H-4);
+    }
+  });
+}
+
+/* ══ REVIEWS ══ */
+function loadReviews() {
+  var url='/api/admin/reviews'+(searchQ?'?q='+encodeURIComponent(searchQ):'');
+  fetch(url,{headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(rows=>{ allRevs=rows; renderTable(); });
+}
+
+function renderTable() {
+  var rows=allRevs.filter(r=>{
+    if (filter==='visible') return r.approved;
+    if (filter==='hidden')  return !r.approved;
+    if (filter==='pinned')  return r.pinned;
+    return true;
+  });
+  var body=document.getElementById('reviewsBody');
+  if (!rows.length) { body.innerHTML='<tr><td colspan="8" class="empty-row">Ничего не найдено</td></tr>'; return; }
+  body.innerHTML=rows.map(r=>{
+    var stars=[1,2,3,4,5].map(n=>'<span class="star-s'+(n>r.rating?' e':'')+'">★</span>').join('');
+    var date=new Date(r.created_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+    var ip=r.ip_hash?r.ip_hash.slice(0,10)+'…':'—';
+    var badges='<span class="badge '+(r.approved?'badge-ok':'badge-hidden')+'">'+(r.approved?'ВИДИМ':'СКРЫТ')+'</span>';
+    if (r.pinned) badges+=' <span class="badge badge-pin">📌</span>';
+    var bodyPreview=esc(r.body.slice(0,100))+(r.body.length>100?'…':'');
+    var replyHtml=r.admin_reply?'<div style="margin-top:5px;font-size:.65rem;color:var(--green)">↩ '+esc(r.admin_reply.slice(0,60))+'</div>':'';
+    return '<tr class="'+((!r.approved?'hidden-row ':'')+( r.pinned?'pinned-row':''))+'" id="row-'+r.id+'">'
+      +'<td class="td-id">'+r.id+'</td>'
+      +'<td class="td-name" title="'+esc(r.name)+'">'+esc(r.name)+'</td>'
+      +'<td>'+stars+'</td>'
+      +'<td class="td-body">'+bodyPreview+replyHtml+'</td>'
+      +'<td class="td-date">'+date+'</td>'
+      +'<td class="td-ip">'+ip+'</td>'
+      +'<td>'+badges+'</td>'
+      +'<td class="actions">'
+      +(r.approved?'<button class="btn-xs bx-hide"  onclick="toggleRev('+r.id+')">СКРЫТЬ</button>'
+                  :'<button class="btn-xs bx-show"  onclick="toggleRev('+r.id+')">ПОКАЗАТЬ</button>')
+      +'<button class="btn-xs bx-pin"   onclick="pinRev('+r.id+')">'+(r.pinned?'ОТКРЕПИТЬ':'ЗАКРЕПИТЬ')+'</button>'
+      +'<button class="btn-xs bx-edit"  onclick="openEdit('+r.id+')">ИЗМЕНИТЬ</button>'
+      +'<button class="btn-xs bx-reply" onclick="openReply('+r.id+')">ОТВЕТ</button>'
+      +'<button class="btn-xs bx-ban"   onclick="banIp('+r.id+')">БАН IP</button>'
+      +'<button class="btn-xs bx-del"   onclick="deleteRev('+r.id+')">УДАЛИТЬ</button>'
+      +'</td></tr>';
+  }).join('');
+}
+
+function toggleRev(id) {
+  fetch('/api/admin/reviews/'+id+'/toggle',{method:'PATCH',headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(d=>{ var r=allRevs.find(x=>x.id===id); if(r) r.approved=d.approved; renderTable(); loadStats(); toast(d.approved?'Отзыв опубликован':'Отзыв скрыт'); });
+}
+function pinRev(id) {
+  fetch('/api/admin/reviews/'+id+'/pin',{method:'PATCH',headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(d=>{ var r=allRevs.find(x=>x.id===id); if(r) r.pinned=d.pinned; renderTable(); toast(d.pinned?'📌 Закреплён':'Откреплён'); });
+}
+function deleteRev(id) {
+  if (!confirm('Удалить отзыв #'+id+'? Необратимо.')) return;
+  fetch('/api/admin/reviews/'+id,{method:'DELETE',headers:{Authorization:'Bearer '+token}})
+  .then(()=>{ allRevs=allRevs.filter(r=>r.id!==id); renderTable(); loadStats(); toast('Отзыв #'+id+' удалён'); });
+}
+function banIp(id) {
+  var rev=allRevs.find(r=>r.id===id);
+  if (!rev||!rev.ip_hash) { toast('Нет IP-хэша','err'); return; }
+  if (!confirm('Заблокировать IP-хэш автора отзыва #'+id+'?')) return;
+  fetch('/api/admin/bans',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({ip_hash:rev.ip_hash,reason:'Заблокирован с отзыва #'+id})})
+  .then(r=>r.json()).then(()=>{ toast('IP заблокирован','err'); loadStats(); });
+}
+function deleteAllHidden() {
+  var cnt=allRevs.filter(r=>!r.approved).length;
+  if (!cnt) { toast('Нет скрытых','err'); return; }
+  if (!confirm('Удалить все '+cnt+' скрытых?')) return;
+  fetch('/api/admin/reviews/hidden/all',{method:'DELETE',headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(d=>{ toast('Удалено: '+d.deleted); loadReviews(); loadStats(); });
+}
+function exportCsv() {
+  var a=document.createElement('a');
+  a.href='/api/admin/reviews/export';
+  a.download='reviews.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+var searchTimer;
+function onSearch() { searchQ=document.getElementById('searchInput').value.trim(); clearTimeout(searchTimer); searchTimer=setTimeout(loadReviews,350); }
+function setFilter(f) {
+  filter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('f'+{all:'All',visible:'Visible',hidden:'Hidden',pinned:'Pinned'}[f]).classList.add('active');
+  renderTable();
+}
+
+/* ══ EDIT MODAL ══ */
+function openEdit(id) {
+  editId=id;
+  var r=allRevs.find(x=>x.id===id);
+  document.getElementById('editName').value   = r.name;
+  document.getElementById('editRating').value = r.rating;
+  document.getElementById('editBody').value   = r.body;
+  document.getElementById('editModal').classList.add('open');
+}
+function saveEdit() {
+  fetch('/api/admin/reviews/'+editId+'/edit',{method:'PATCH',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({name:document.getElementById('editName').value,rating:document.getElementById('editRating').value,body:document.getElementById('editBody').value})})
+  .then(r=>r.json()).then(()=>{ closeModal('editModal'); loadReviews(); toast('Отзыв обновлён','ok'); });
+}
+
+/* ══ REPLY MODAL ══ */
+function openReply(id) {
+  replyId=id;
+  var r=allRevs.find(x=>x.id===id);
+  document.getElementById('replyText').value = r.admin_reply||'';
+  document.getElementById('replyModal').classList.add('open');
+}
+function saveReply() {
+  fetch('/api/admin/reviews/'+replyId+'/reply',{method:'PATCH',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({reply:document.getElementById('replyText').value})})
+  .then(r=>r.json()).then(()=>{ closeModal('replyModal'); loadReviews(); toast('Ответ сохранён','ok'); });
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',function(e){ if(e.target===m) m.classList.remove('open'); }));
+
+/* ══ BANS ══ */
+function loadBans() {
+  fetch('/api/admin/bans',{headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(rows=>{
+    var el=document.getElementById('bansList');
+    if (!rows.length) { el.innerHTML='<div class="empty-row">Нет заблокированных IP</div>'; return; }
+    el.innerHTML=rows.map(b=>'<div class="ban-card">'
+      +'<div class="ban-hash">'+b.ip_hash+'</div>'
+      +'<div class="ban-reason">'+esc(b.reason||'—')+'</div>'
+      +'<div class="ban-date">'+new Date(b.created_at).toLocaleDateString('ru-RU')+'</div>'
+      +'<button class="btn-xs bx-show" onclick="unban('+b.id+')">РАЗБАН</button>'
+      +'</div>').join('');
+  });
+}
+function unban(id) {
+  fetch('/api/admin/bans/'+id,{method:'DELETE',headers:{Authorization:'Bearer '+token}})
+  .then(()=>{ loadBans(); loadStats(); toast('IP разблокирован','ok'); });
+}
+
+/* ══ LOGS ══ */
+function loadLogs() {
+  fetch('/api/admin/logs',{headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(rows=>{
+    var el=document.getElementById('logsList');
+    if (!rows.length) { el.innerHTML='<div class="empty-row">Лог пуст</div>'; return; }
+    el.innerHTML=rows.map(l=>'<div class="log-row">'
+      +'<span class="log-action log-'+l.action+'">'+l.action+'</span>'
+      +'<span class="log-details">'+esc(l.details||'')+'</span>'
+      +'<span class="log-time">'+new Date(l.created_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</span>'
+      +'</div>').join('');
+  });
+}
+
+/* ══ SETTINGS ══ */
+function loadSettings() {
+  fetch('/api/admin/settings',{headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(s=>{
+    if(document.getElementById('sBotLink')) {
+      document.getElementById('sBotLink').value = s.bot_link||'';
+      document.getElementById('sCtaText').value = s.cta_text||'';
+      document.getElementById('sTgToken').value = s.tg_notify_token||'';
+      document.getElementById('sTgChat').value  = s.tg_notify_chat_id||'';
+    }
+  });
+}
+function saveSettings() {
+  fetch('/api/admin/settings',{method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({bot_link:document.getElementById('sBotLink').value,cta_text:document.getElementById('sCtaText').value})})
+  .then(r=>r.json()).then(()=>toast('Настройки сохранены','ok'));
+}
+function saveTgSettings() {
+  fetch('/api/admin/settings',{method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({tg_notify_token:document.getElementById('sTgToken').value,tg_notify_chat_id:document.getElementById('sTgChat').value})})
+  .then(r=>r.json()).then(()=>toast('Telegram настроен','ok'));
+}
+function testTg() {
+  fetch('/api/admin/settings/test-tg',{method:'POST',headers:{Authorization:'Bearer '+token}})
+  .then(r=>r.json()).then(d=>{ if(d.ok) toast('Тестовое сообщение отправлено ✓','ok'); else toast('Ошибка: '+d.error,'err'); });
+}
+
+/* ══ TOAST ══ */
+var toastT;
+function toast(msg,type) {
+  var el=document.getElementById('toast');
+  el.textContent=msg; el.className='show'+(type?' '+type:'');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.className='',3000);
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
