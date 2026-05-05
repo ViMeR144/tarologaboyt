@@ -46,6 +46,7 @@ SUBSCRIPTION_STARS = 100
 SUBSCRIPTION_RUB = 25000
 SUBSCRIPTION_USD = 300  # cents ($4.99)
 SUBSCRIPTION_USDT = "3.00"
+PREMIUM_READING_STARS = 35
 FREE_REQUESTS = 5
 DB_PATH = os.getenv("DB_PATH", "tarot_bot.db")
 MOSCOW_TZ = timezone(timedelta(hours=3))
@@ -1401,6 +1402,19 @@ async def init_db():
             payment_id TEXT PRIMARY KEY, user_id INTEGER,
             method TEXT, amount TEXT, currency TEXT,
             created_at TEXT DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS reading_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            action TEXT, rating TEXT, note TEXT DEFAULT NULL,
+            created_at TEXT DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS funnel_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            event TEXT, context TEXT DEFAULT NULL,
+            created_at TEXT DEFAULT (datetime('now')))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS one_time_entitlements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            kind TEXT, used INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            used_at TEXT DEFAULT NULL)""")
         for col in ["notifications INTEGER DEFAULT 1","language TEXT DEFAULT NULL",
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
                     "birth_date TEXT DEFAULT NULL","full_name TEXT DEFAULT NULL",
@@ -1457,6 +1471,42 @@ async def log_request(user_id: int, username: str, action: str):
                          (user_id, username or "unknown"))
         await db.commit()
 
+async def log_funnel_event(user_id: int, event: str, context: str = ""):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO funnel_events (user_id,event,context) VALUES (?,?,?)",
+                         (user_id, event, context[:200] if context else ""))
+        await db.commit()
+
+async def save_feedback(user_id: int, action: str, rating: str, note: str = ""):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO reading_feedback (user_id,action,rating,note) VALUES (?,?,?,?)",
+                         (user_id, action, rating, note[:300] if note else None))
+        await db.commit()
+
+async def grant_one_time_entitlement(user_id: int, kind: str = "premium_deep"):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO one_time_entitlements (user_id,kind) VALUES (?,?)", (user_id, kind))
+        await db.commit()
+
+async def has_one_time_entitlement(user_id: int, kind: str = "premium_deep") -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM one_time_entitlements WHERE user_id=? AND kind=? AND used=0 LIMIT 1",
+            (user_id, kind)) as c:
+            return bool(await c.fetchone())
+
+async def consume_one_time_entitlement(user_id: int, kind: str = "premium_deep") -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id FROM one_time_entitlements WHERE user_id=? AND kind=? AND used=0 ORDER BY id LIMIT 1",
+            (user_id, kind)) as c:
+            row = await c.fetchone()
+        if not row:
+            return False
+        await db.execute("UPDATE one_time_entitlements SET used=1, used_at=datetime('now') WHERE id=?", (row[0],))
+        await db.commit()
+    return True
+
 async def update_streak(user_id: int) -> tuple:
     today = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
     yesterday = (datetime.now(MOSCOW_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1511,6 +1561,36 @@ async def get_profile(user_id: int) -> dict:
             return {"birth_date": row[0], "full_name": row[1], "zodiac": row[2],
                     "streak": row[3] or 0, "bonus": row[4],
                     "gender": row[5], "city": row[6], "timezone": row[7]}
+
+def profile_prompt_context(profile: dict, lang: str = "ru") -> str:
+    if not profile:
+        return ""
+    parts = []
+    labels = {
+        "full_name": "Имя", "birth_date": "Дата рождения", "zodiac": "Знак",
+        "gender": "Пол", "city": "Город", "timezone": "Часовой пояс",
+    }
+    for key, label in labels.items():
+        value = profile.get(key)
+        if value:
+            parts.append(f"{label}: {value}")
+    if not parts:
+        return ""
+    return "Данные пользователя для персонализации ответа:\n" + "\n".join(parts)
+
+def parse_utc_offset(value: str | None) -> int:
+    if not value:
+        return 3
+    raw = value.strip().upper().replace("UTC", "").replace("GMT", "").strip()
+    if not raw:
+        return 3
+    try:
+        sign = -1 if raw.startswith("-") else 1
+        raw = raw.lstrip("+-")
+        hour = int(raw.split(":", 1)[0])
+        return max(-12, min(14, sign * hour))
+    except Exception:
+        return 3
 
 _SAFE_PROFILE_FIELDS = {"birth_date", "full_name", "zodiac", "gender", "city", "timezone"}
 
@@ -1589,7 +1669,11 @@ async def toggle_notifications(user_id: int, username: str = None) -> bool:
 
 async def get_notification_users():
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT user_id FROM users WHERE notifications=1 AND COALESCE(is_banned,0)=0") as c:
+        async with db.execute(
+            """SELECT u.user_id FROM users u
+               JOIN subscriptions s ON s.user_id=u.user_id AND s.expires_at>?
+               WHERE u.notifications=1 AND COALESCE(u.is_banned,0)=0""",
+            (datetime.now().isoformat(),)) as c:
             return [row[0] for row in await c.fetchall()]
 
 async def get_all_users():
@@ -1615,8 +1699,12 @@ async def get_reading_history(user_id: int):
 async def get_inactive_users(days: int = 3):
     cutoff = (datetime.now(MOSCOW_TZ) - timedelta(days=days)).strftime("%Y-%m-%d")
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT user_id FROM users WHERE notifications=1 AND COALESCE(is_banned,0)=0 AND last_active_date IS NOT NULL AND last_active_date < ?",
-                              (cutoff,)) as c:
+        async with db.execute(
+            """SELECT u.user_id FROM users u
+               JOIN subscriptions s ON s.user_id=u.user_id AND s.expires_at>?
+               WHERE u.notifications=1 AND COALESCE(u.is_banned,0)=0
+               AND u.last_active_date IS NOT NULL AND u.last_active_date < ?""",
+            (datetime.now().isoformat(), cutoff)) as c:
             return [row[0] for row in await c.fetchall()]
 
 def get_moon_phase(dt=None) -> str | None:
@@ -1702,6 +1790,26 @@ async def get_admin_finance_stats():
         async with db.execute("SELECT COUNT(*) FROM users") as c:
             total_users = (await c.fetchone())[0]
     return total_p, today_p, week_p, month_p, methods, paid_users, total_users
+
+async def get_admin_funnel_stats():
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT event, COUNT(*) FROM funnel_events GROUP BY event ORDER BY COUNT(*) DESC LIMIT 20"
+        ) as c:
+            events = await c.fetchall()
+        async with db.execute(
+            "SELECT rating, COUNT(*) FROM reading_feedback GROUP BY rating ORDER BY COUNT(*) DESC"
+        ) as c:
+            ratings = await c.fetchall()
+        async with db.execute(
+            "SELECT COUNT(*) FROM one_time_entitlements WHERE kind='premium_deep'"
+        ) as c:
+            premium_total = (await c.fetchone())[0]
+        async with db.execute(
+            "SELECT COUNT(*) FROM one_time_entitlements WHERE kind='premium_deep' AND used=1"
+        ) as c:
+            premium_used = (await c.fetchone())[0]
+    return events, ratings, premium_total, premium_used
 
 async def get_top_users(limit: int = 10):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -1801,12 +1909,21 @@ async def set_notify_hour(user_id: int, hour: int):
 async def get_notification_users_for_hour(hour: int) -> list:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT user_id FROM users WHERE notifications=1 AND COALESCE(is_banned,0)=0 AND COALESCE(notify_hour,8)=?",
-            (hour,)) as c:
+            """SELECT u.user_id, COALESCE(u.notify_hour,8), u.timezone
+               FROM users u
+               JOIN subscriptions s ON s.user_id=u.user_id AND s.expires_at>?
+               WHERE u.notifications=1 AND COALESCE(u.is_banned,0)=0""",
+            (datetime.now().isoformat(),)) as c:
             rows = await c.fetchall()
-    return [r[0] for r in rows]
+    result = []
+    for user_id, notify_hour, tz_text in rows:
+        offset = parse_utc_offset(tz_text)
+        local_hour = (hour - 3 + offset) % 24
+        if local_hour == (notify_hour or 8):
+            result.append(user_id)
+    return result
 
-# ─── CLAUDE ───────────────────────────────────────────────────────────────────
+# ─── OPENAI ───────────────────────────────────────────────────────────────────
 async def ask_openai(prompt: str, lang: str = 'ru') -> str:
     if not openai_client:
         logger.error("OPENAI_API_KEY is not set")
@@ -1872,11 +1989,8 @@ async def ask_openai_vision(image_bytes: bytes, lang: str = 'ru') -> str:
         logger.error(f"OpenAI vision error: {e}")
         return t(lang, 'error')
 
-ask_claude = ask_openai
-ask_claude_stream = ask_openai_stream
-ask_claude_vision = ask_openai_vision
-
 user_states: dict = {}
+last_reading_contexts: dict[int, dict] = {}
 
 # ─── KEYBOARDS ────────────────────────────────────────────────────────────────
 def language_keyboard():
@@ -1931,6 +2045,7 @@ def esoterics_submenu_kb(lang: str = 'ru'):
 def account_submenu_kb(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_subscription'), callback_data="subscription")
+    kb.button(text="✨ Премиум-разбор" if lang == 'ru' else "✨ Premium reading", callback_data="premium_menu")
     kb.button(text=t(lang,'btn_promo'), callback_data="promo_input")
     kb.button(text=t(lang,'btn_gift_sub'), callback_data="gift_sub")
     kb.button(text=t(lang,'btn_referral'), callback_data="referral")
@@ -1955,7 +2070,7 @@ def back_button(lang: str = 'ru'):
 # maps action → parent menu to return to after a result
 ACTION_BACK: dict[str, str] = {
     # Taро → меню таро
-    "tarot_1": "tarot_menu", "tarot_3_question": "tarot_menu",
+    "tarot_1_question": "tarot_menu", "tarot_3_question": "tarot_menu",
     "tarot_5_question": "tarot_menu", "tarot_cc_question": "tarot_menu",
     "tarot_yn_question": "tarot_menu",
     # Любовь → меню любви
@@ -1984,12 +2099,31 @@ ACTION_BACK: dict[str, str] = {
     "card_year": "back_main",
 }
 
-def result_keyboard(lang: str, back_to: str = "back_main"):
+def result_keyboard(lang: str, back_to: str = "back_main", with_followups: bool = True):
     kb = InlineKeyboardBuilder()
+    if with_followups:
+        if lang == 'ru':
+            kb.button(text="💬 Задать доп. вопрос", callback_data="follow_custom")
+            kb.button(text="🧭 Что делать?", callback_data="follow_advice")
+            kb.button(text="⏳ Сроки", callback_data="follow_timing")
+            kb.button(text="✨ Глубокий разбор", callback_data="premium_deep")
+            kb.button(text="👍 Попало", callback_data="rate_good")
+            kb.button(text="👎 Не попало", callback_data="rate_bad")
+        else:
+            kb.button(text="💬 Follow-up", callback_data="follow_custom")
+            kb.button(text="🧭 Advice", callback_data="follow_advice")
+            kb.button(text="⏳ Timing", callback_data="follow_timing")
+            kb.button(text="✨ Deep reading", callback_data="premium_deep")
+            kb.button(text="👍 Helpful", callback_data="rate_good")
+            kb.button(text="👎 Not helpful", callback_data="rate_bad")
     if back_to == "back_main":
         kb.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
     else:
         kb.button(text=t(lang, 'btn_back'), callback_data=back_to)
+    if with_followups:
+        kb.adjust(1, 2, 1, 2, 1)
+    else:
+        kb.adjust(1)
     return kb.as_markup()
 
 def cancel_keyboard(lang: str = 'ru'):
@@ -2090,9 +2224,29 @@ def career_menu_kb(lang: str = 'ru'):
     kb.adjust(1)
     return kb.as_markup()
 
+def smart_paywall_text(lang: str, action: str = "") -> str:
+    if lang != 'ru':
+        return t(lang, 'paywall', free=FREE_REQUESTS, stars=SUBSCRIPTION_STARS)
+    if action.startswith("love"):
+        return (f"🔒 *Лимит бесплатных запросов исчерпан*\n\n"
+                f"В любовных раскладах часто важны уточнения: чувства, сроки и следующий шаг.\n\n"
+                f"*Подписка на 30 дней — {SUBSCRIPTION_STARS} ⭐*\n"
+                "• Безлимитные расклады\n• Дополнительные вопросы после ответа\n• Ежедневная личная рассылка")
+    if action.startswith("career"):
+        return (f"🔒 *Лимит бесплатных запросов исчерпан*\n\n"
+                f"Для карьерных и денежных вопросов лучше смотреть динамику, риски и конкретный план.\n\n"
+                f"*Подписка на 30 дней — {SUBSCRIPTION_STARS} ⭐*\n"
+                "• Безлимитные карьерные расклады\n• Уточняющие вопросы\n• Прогнозы и советы каждый день")
+    if action == "palmistry":
+        return (f"🔒 *Лимит бесплатных запросов исчерпан*\n\n"
+                f"Хиромантия даёт больше пользы, когда можно задать дополнительные вопросы по линиям руки.\n\n"
+                f"*Подписка на 30 дней — {SUBSCRIPTION_STARS} ⭐*")
+    return t(lang, 'paywall', free=FREE_REQUESTS, stars=SUBSCRIPTION_STARS)
+
 def paywall_keyboard(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
+    kb.button(text=f"✨ Разовый глубокий разбор — {PREMIUM_READING_STARS} Stars" if lang == 'ru' else f"✨ One deep reading — {PREMIUM_READING_STARS} Stars", callback_data="premium_deep")
     if YUKASSA_SHOP_ID:
         kb.button(text=t(lang,'btn_buy_sbp'), callback_data="buy_sbp")
     kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
@@ -2152,6 +2306,10 @@ async def _edit_or_send(chat_id: int, msg_id, text: str, markup):
             pass
     await bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
 
+async def show_paywall(callback: CallbackQuery, lang: str, action: str = ""):
+    await log_funnel_event(callback.from_user.id, "paywall_shown", action)
+    await safe_edit(callback, smart_paywall_text(lang, action), paywall_keyboard(lang))
+
 processing_users = set()
 
 async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt_msg_id,
@@ -2172,12 +2330,17 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
             chat_id = uid
             
         await log_request(uid, username, action)
+        await log_funnel_event(uid, "reading_started", action)
         streak, milestone = await update_streak(uid)
+        profile_context = profile_prompt_context(await get_profile(uid), lang)
+        original_prompt = prompt
+        if profile_context:
+            prompt = f"{profile_context}\n\nЗапрос:\n{prompt}"
         
         # Потоковый вывод ответа (Streaming)
         answer = ""
         last_update = time.time()
-        async for chunk in ask_claude_stream(prompt, lang):
+        async for chunk in ask_openai_stream(prompt, lang):
             answer += chunk
             # Обновляем сообщение не чаще 1 раза в 1.5 секунды
             if time.time() - last_update > 1.5:
@@ -2190,8 +2353,17 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
                 
         result = f"{result_header}\n\n{answer}" if result_header else answer
         back_to = ACTION_BACK.get(action, "back_main")
+        last_reading_contexts[uid] = {
+            "action": action,
+            "header": result_header,
+            "prompt": original_prompt,
+            "answer": answer,
+            "result": result,
+            "back_to": back_to,
+        }
         await _edit_or_send(chat_id, prompt_msg_id, result, result_keyboard(lang, back_to))
         await save_reading_history(uid, action, result_header, result)
+        await log_funnel_event(uid, "reading_completed", action)
         if milestone:
             await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
     finally:
@@ -2205,7 +2377,7 @@ async def send_daily_broadcast(current_hour: int = 8):
     if current_hour == 8 and CHANNEL_ID:
         channel_card = random.choice(TAROT_CARDS)
         try:
-            ch_answer = await ask_claude(f"Сегодня {today}. Карта дня: {channel_card}. Дай краткую интерпретацию 80-100 слов.", 'ru')
+            ch_answer = await ask_openai(f"Сегодня {today}. Карта дня: {channel_card}. Дай краткую интерпретацию 80-100 слов.", 'ru')
             await bot.send_message(CHANNEL_ID, f"🌅 *Карта дня — {today}*\n\n*{channel_card}*\n\n{ch_answer}", parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Channel broadcast error: {e}")
@@ -2217,7 +2389,7 @@ async def send_daily_broadcast(current_hour: int = 8):
             has_sub = await has_subscription(uid)
             words = "150-200" if has_sub else "40-50"
             card = random.Random(hash(f"{uid}:{today_seed}")).choice(TAROT_CARDS)
-            answer = await ask_claude(f"Сегодня {today}. Карта дня: {card}. Дай интерпретацию {words} слов.", lang)
+            answer = await ask_openai(f"Сегодня {today}. Карта дня: {card}. Дай интерпретацию {words} слов.", lang)
             text = f"{t(lang,'broadcast_morning',date=today)}\n\n*{card}*\n\n{answer}"
             if not has_sub:
                 text += f"\n\n{t(lang,'broadcast_sub_hint')}"
@@ -2269,7 +2441,7 @@ async def inactive_reminder_loop():
             except Exception as e:
                 logger.error(f"Inactive reminder error {uid}: {e}")
 
-async def cryptobot_create_invoice(user_id: int) -> dict | None:
+async def cryptobot_create_invoice(user_id: int, description: str = "Mystra subscription") -> dict | None:
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -2284,6 +2456,8 @@ async def cryptobot_create_invoice(user_id: int) -> dict | None:
     except Exception as e:
         logger.error(f"CryptoBot create invoice error: {e}")
         return None
+
+create_cryptobot_invoice = cryptobot_create_invoice
 
 async def create_yukassa_sbp_payment(uid: int) -> dict | None:
     if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
@@ -2340,6 +2514,7 @@ async def check_yukassa_payments():
                                 await db.commit()
                             lang = await get_user_lang(user_id)
                             expiry = await grant_subscription(user_id, 30)
+                            await log_funnel_event(user_id, "payment_success", "sbp_subscription")
                             await bot.send_message(user_id,
                                 t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
                                 parse_mode="Markdown", reply_markup=main_menu(lang))
@@ -2388,6 +2563,7 @@ async def check_crypto_payments():
             for invoice_id, user_id in pending_map.items():
                 if invoice_id in paid_ids:
                     expiry = await grant_subscription(user_id, 30)
+                    await log_funnel_event(user_id, "payment_success", "crypto_subscription")
                     lang = await get_user_lang(user_id)
                     await bot.send_message(
                         user_id, t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
@@ -2555,10 +2731,11 @@ async def show_admin_menu(message_or_callback):
     kb.button(text="🎟 Промокоды", callback_data="adm_promos")
     kb.button(text="📢 Рассылка", callback_data="adm_broadcast_menu")
     kb.button(text="💰 Финансы", callback_data="adm_finance")
+    kb.button(text="📈 Воронка", callback_data="adm_funnel")
     kb.button(text="🏆 Топ юзеров", callback_data="adm_top")
     kb.button(text="📈 Популярность", callback_data="adm_popular")
     kb.button(text="📥 Экспорт CSV", callback_data="adm_export")
-    kb.adjust(2, 2, 2, 2, 2)
+    kb.adjust(2, 2, 2, 2, 2, 1)
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     else:
@@ -2846,6 +3023,30 @@ async def adm_top_cb(callback: CallbackQuery):
         text += f"{i}. {label} — *{cnt}* запросов\n"
     kb = InlineKeyboardBuilder()
     kb.button(text="🔄 Обновить", callback_data="adm_top")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(2)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_funnel")
+async def adm_funnel_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    events, ratings, premium_total, premium_used = await get_admin_funnel_stats()
+    text = "📈 *Воронка и качество*\n\n*События:*\n"
+    if events:
+        for event, cnt in events:
+            text += f"• `{event}` — *{cnt}*\n"
+    else:
+        text += "• пока нет событий\n"
+    text += "\n*Оценки раскладов:*\n"
+    if ratings:
+        for rating, cnt in ratings:
+            text += f"• `{rating}` — *{cnt}*\n"
+    else:
+        text += "• пока нет оценок\n"
+    text += f"\n*Разовые премиум-разборы:* {premium_used}/{premium_total} использовано"
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Обновить", callback_data="adm_funnel")
     kb.button(text="🏠 Меню", callback_data="adm_main")
     kb.adjust(2)
     await safe_edit(callback, text, markup=kb.as_markup())
@@ -3532,7 +3733,7 @@ async def card_of_day_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await safe_edit(callback, t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), paywall_keyboard(lang))
+        await show_paywall(callback, lang, "card_of_day")
         await callback.answer(); return
     await safe_edit(callback, t(lang,'pulling_card'), None)
     today = datetime.now().strftime("%d.%m.%Y")
@@ -3549,7 +3750,7 @@ async def moon_calendar_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await show_paywall(callback, lang, "moon_calendar")
         await callback.answer(); return
     await callback.message.edit_text(t(lang,'reading_moon'), parse_mode="Markdown")
     today = datetime.now().strftime("%d.%m.%Y")
@@ -3564,7 +3765,7 @@ async def lucky_number_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await show_paywall(callback, lang, "lucky_number")
         await callback.answer(); return
     await callback.message.edit_text(t(lang,'calc_lucky'), parse_mode="Markdown")
     today = datetime.now().strftime("%d.%m.%Y")
@@ -3579,7 +3780,7 @@ async def ritual_day_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await show_paywall(callback, lang, "ritual_day")
         await callback.answer(); return
     await callback.message.edit_text(t(lang,'finding_ritual'), parse_mode="Markdown")
     today = datetime.now().strftime("%d.%m.%Y")
@@ -3594,7 +3795,7 @@ async def week_spread_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await show_paywall(callback, lang, "week_spread")
         await callback.answer(); return
     await callback.message.edit_text(t(lang,'spreading_week'), parse_mode="Markdown")
     today = datetime.now()
@@ -3613,7 +3814,7 @@ async def horoscope_period_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await show_paywall(callback, lang, "horoscope")
         await callback.answer(); return
     parts = callback.data.split("_", 2)
     period, sign = parts[1], parts[2]
@@ -3634,6 +3835,10 @@ async def horoscope_period_cb(callback: CallbackQuery):
 async def notifications_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
+    if not await has_subscription(uid):
+        await show_paywall(callback, lang, "notifications")
+        await callback.answer()
+        return
     enabled = await get_notifications_status(uid)
     hour = await get_notify_hour(uid)
     kb = InlineKeyboardBuilder()
@@ -3649,6 +3854,10 @@ async def notifications_cb(callback: CallbackQuery):
 async def notif_toggle(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
+    if not await has_subscription(uid):
+        await show_paywall(callback, lang, "notifications")
+        await callback.answer()
+        return
     new_status = await toggle_notifications(uid, callback.from_user.username)
     hour = await get_notify_hour(uid)
     status = t(lang,'notif_enabled' if new_status else 'notif_disabled')
@@ -3682,6 +3891,7 @@ async def subscription_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "buy_stars")
 async def buy_stars_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
+    await log_funnel_event(callback.from_user.id, "buy_clicked", "stars_subscription")
     await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
                            description=t(lang,'invoice_desc'), payload="sub_30d_stars",
                            currency="XTR", prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_STARS)])
@@ -3690,6 +3900,7 @@ async def buy_stars_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "buy_rub")
 async def buy_rub_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
+    await log_funnel_event(callback.from_user.id, "buy_clicked", "rub_subscription")
     if not YUKASSA_TOKEN:
         await callback.answer("⏳ Оплата картой скоро будет доступна!", show_alert=True); return
     await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
@@ -3702,6 +3913,7 @@ async def buy_rub_cb(callback: CallbackQuery):
 async def buy_sbp_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
+    await log_funnel_event(uid, "buy_clicked", "sbp_subscription")
     if not YUKASSA_SHOP_ID:
         await callback.answer("⏳ СБП пока недоступен!", show_alert=True); return
     await callback.answer()
@@ -3726,6 +3938,7 @@ async def buy_sbp_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "buy_crypto")
 async def buy_crypto_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
+    await log_funnel_event(callback.from_user.id, "buy_clicked", "crypto_subscription")
     if not CRYPTOBOT_TOKEN:
         await callback.answer(t(lang,'payment_unavail'), show_alert=True); return
     await callback.answer()
@@ -3750,12 +3963,93 @@ async def buy_crypto_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "buy_card")
 async def buy_card_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
+    await log_funnel_event(callback.from_user.id, "buy_clicked", "card_subscription")
     if not STRIPE_TOKEN:
         await callback.answer(t(lang,'payment_unavail'), show_alert=True); return
     await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
                            description=t(lang,'invoice_desc'), payload="sub_30d_card",
                            provider_token=STRIPE_TOKEN, currency="USD",
                            prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_USD)])
+    await callback.answer()
+
+@dp.callback_query(F.data == "premium_menu")
+async def premium_menu_cb(callback: CallbackQuery):
+    lang = await get_user_lang(callback.from_user.id)
+    text = (f"✨ *Премиум-разбор*\n\n"
+            f"Разовый глубокий ответ без покупки подписки.\n\n"
+            f"Стоимость: *{PREMIUM_READING_STARS} Stars*\n\n"
+            "Можно использовать для уточнения последнего расклада или для нового большого вопроса."
+            if lang == 'ru' else
+            f"✨ *Premium reading*\n\nOne deep answer without subscription.\n\nPrice: *{PREMIUM_READING_STARS} Stars*")
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"✨ Купить за {PREMIUM_READING_STARS} Stars" if lang == 'ru' else f"✨ Buy for {PREMIUM_READING_STARS} Stars", callback_data="premium_deep")
+    kb.button(text=t(lang, 'btn_back'), callback_data="account_menu")
+    kb.adjust(1)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "premium_deep")
+async def premium_deep_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    await log_funnel_event(uid, "premium_deep_clicked", last_reading_contexts.get(uid, {}).get("action", "no_context"))
+    if await has_one_time_entitlement(uid, "premium_deep"):
+        user_states[uid] = {
+            "action": "premium_deep_question",
+            "prompt_msg_id": callback.message.message_id,
+            "chat_id": callback.message.chat.id,
+        }
+        text = "✨ Напишите вопрос для глубокого разбора:" if lang == 'ru' else "✨ Write your question for the deep reading:"
+        await safe_edit(callback, text, cancel_keyboard(lang))
+        await callback.answer()
+        return
+    await bot.send_invoice(
+        chat_id=uid,
+        title="✨ Глубокий разбор Mystra" if lang == 'ru' else "✨ Mystra deep reading",
+        description="Один разовый глубокий разбор" if lang == 'ru' else "One deep reading",
+        payload="premium_deep_stars",
+        currency="XTR",
+        prices=[LabeledPrice(label="Deep reading", amount=PREMIUM_READING_STARS)])
+    await callback.answer()
+
+@dp.callback_query(F.data.in_({"rate_good", "rate_bad"}))
+async def rate_reading_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    ctx = last_reading_contexts.get(uid, {})
+    rating = "good" if callback.data == "rate_good" else "bad"
+    await save_feedback(uid, ctx.get("action", "unknown"), rating)
+    await log_funnel_event(uid, "feedback_" + rating, ctx.get("action", "unknown"))
+    await callback.answer("Спасибо, я учту оценку." if lang == 'ru' else "Thanks, I will use this feedback.", show_alert=False)
+
+@dp.callback_query(F.data.in_({"follow_custom", "follow_advice", "follow_timing"}))
+async def followup_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    ctx = last_reading_contexts.get(uid)
+    if not ctx:
+        await callback.answer("Сначала сделайте расклад." if lang == 'ru' else "Make a reading first.", show_alert=True)
+        return
+    if not await can_use_bot(uid):
+        await show_paywall(callback, lang, ctx.get("action", "followup"))
+        await callback.answer()
+        return
+    if callback.data == "follow_custom":
+        user_states[uid] = {
+            "action": "followup_question",
+            "prompt_msg_id": callback.message.message_id,
+            "chat_id": callback.message.chat.id,
+        }
+        await safe_edit(callback, "💬 Напишите дополнительный вопрос по этому раскладу:" if lang == 'ru' else "💬 Write your follow-up question:", cancel_keyboard(lang))
+        await callback.answer()
+        return
+    question = "Что мне лучше сделать дальше? Дай конкретный совет." if callback.data == "follow_advice" else "Какие сроки и ближайшая динамика у этой ситуации?"
+    prompt = (f"Предыдущий расклад:\n{ctx.get('result','')}\n\n"
+              f"Дополнительный вопрос пользователя: {question}\n\n"
+              "Ответь в контексте предыдущего расклада. Не повторяй весь расклад, дай только уточнение. 120-180 слов.")
+    await _do_request(uid, callback.from_user.username, "followup", callback.message.chat.id,
+                      callback.message.message_id, prompt, lang,
+                      "💬 *Дополнительный вопрос*" if lang == 'ru' else "💬 *Follow-up*")
     await callback.answer()
 
 @dp.pre_checkout_query()
@@ -3814,8 +4108,21 @@ async def successful_payment_handler(message: Message):
                 f"🎁 *Подарочная подписка куплена*\n"
                 f"👤 {uname}\n💰 {amount_str}\n🎟 Код: `{code}`",
                 parse_mode="Markdown")
+    elif payload == "premium_deep_stars":
+        await grant_one_time_entitlement(uid, "premium_deep")
+        await log_funnel_event(uid, "payment_success", "premium_deep")
+        user_states[uid] = {"action": "premium_deep_question"}
+        await message.answer(
+            "✨ *Глубокий разбор оплачен!*\n\nНапишите ваш вопрос одним сообщением." if lang == 'ru'
+            else "✨ *Deep reading paid!*\n\nWrite your question in one message.",
+            parse_mode="Markdown", reply_markup=cancel_keyboard(lang))
+        if ADMIN_ID:
+            await bot.send_message(ADMIN_ID,
+                f"✨ *Разовый премиум-разбор оплачен*\n👤 {uname} (`{uid}`)\n💵 {amount_str}",
+                parse_mode="Markdown")
     else:
         expiry = await grant_subscription(uid, 30)
+        await log_funnel_event(uid, "payment_success", payload)
         await message.answer(t(lang,'sub_activated',date=expiry.strftime('%d.%m.%Y')),
                              parse_mode="Markdown", reply_markup=main_menu(lang))
         if ADMIN_ID:
@@ -3854,7 +4161,7 @@ async def card_year_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     if not await can_use_bot(uid):
-        await callback.message.edit_text(t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS), parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+        await show_paywall(callback, lang, "card_year")
         await callback.answer(); return
     profile = await get_profile(uid)
     if not profile.get('birth_date'):
@@ -4130,13 +4437,36 @@ async def handle_message(message: Message):
 
     # Предупреждение для голосовых сообщений и видеокружков (заглушка до внедрения Speech-to-Text)
     if message.voice or message.video_note or message.audio:
-        if uid in user_states:
+        if state:
             user_states[uid] = state  # Возвращаем состояние ожидания ввода
         msg_text = "🎙 Я пока не умею слушать голосовые сообщения. Пожалуйста, напиши свой вопрос текстом." if lang == 'ru' else "🎙 I can't listen to voice messages yet. Please write your question in text."
         await message.reply(msg_text)
         return
 
     text = message.text or ""
+
+    if action in {"followup_question", "premium_deep_question"}:
+        ctx = last_reading_contexts.get(uid, {})
+        if action == "premium_deep_question" and not await consume_one_time_entitlement(uid, "premium_deep"):
+            await bot.send_message(chat_id, "❌ Премиум-разбор не найден. Откройте меню премиум-разбора ещё раз." if lang == 'ru' else "❌ Premium reading was not found.")
+            return
+        if action == "followup_question" and not await can_use_bot(uid):
+            await bot.send_message(chat_id, smart_paywall_text(lang, ctx.get("action", "followup")),
+                                   parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+            await log_funnel_event(uid, "paywall_shown", "followup")
+            return
+        if ctx:
+            prompt = (f"Предыдущий расклад:\n{ctx.get('result','')}\n\n"
+                      f"Дополнительный вопрос пользователя: {text}\n\n"
+                      "Ответь строго в контексте выбранной темы и предыдущего расклада. "
+                      "Не повторяй весь предыдущий ответ, дай новое уточнение. 180-260 слов.")
+        else:
+            prompt = f"Глубокий премиум-разбор вопроса пользователя: {text}\n\nДай подробный структурированный ответ. 500-700 слов."
+        header = "✨ *Глубокий разбор*" if action == "premium_deep_question" else "💬 *Дополнительный вопрос*"
+        await _do_request(uid, message.from_user.username,
+                          "premium_deep" if action == "premium_deep_question" else "followup",
+                          chat_id, prompt_msg_id, prompt, lang, header)
+        return
 
     # ── Gift subscription: select recipient ──────────────────────────────────
     if action == "gift_select_user":
@@ -4218,8 +4548,9 @@ async def handle_message(message: Message):
                 pass
             return
         if not await can_use_bot(uid):
+            await log_funnel_event(uid, "paywall_shown", "palmistry")
             await _edit_or_send(chat_id, prompt_msg_id,
-                                t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS),
+                                smart_paywall_text(lang, "palmistry"),
                                 paywall_keyboard(lang))
             return
         if prompt_msg_id:
@@ -4237,15 +4568,27 @@ async def handle_message(message: Message):
         image_io = await bot.download_file(file.file_path)
         image_bytes = image_io.read() if hasattr(image_io, 'read') else bytes(image_io)
         await log_request(uid, message.from_user.username, "palmistry")
+        await log_funnel_event(uid, "reading_started", "palmistry")
         streak, milestone = await update_streak(uid)
-        answer = await ask_claude_vision(image_bytes, lang)
+        answer = await ask_openai_vision(image_bytes, lang)
         header = "🖐 *Хиромантическое чтение*" if lang == 'ru' else "🖐 *Palm Reading*"
-        await _edit_or_send(chat_id, prompt_msg_id, f"{header}\n\n{answer}", back_button(lang))
+        result = f"{header}\n\n{answer}"
+        last_reading_contexts[uid] = {
+            "action": "palmistry",
+            "header": header,
+            "prompt": "Фото ладони",
+            "answer": answer,
+            "result": result,
+            "back_to": "readings_menu",
+        }
+        await _edit_or_send(chat_id, prompt_msg_id, result, result_keyboard(lang, "readings_menu"))
+        await save_reading_history(uid, "palmistry", header, result)
+        await log_funnel_event(uid, "reading_completed", "palmistry")
         if milestone:
             await bot.send_message(uid, t(lang,'streak_bonus', days=streak), parse_mode="Markdown")
         return
 
-    # ── Profile field saves (no Claude, no request count) ─────────────────────
+    # ── Profile field saves (no AI request count) ─────────────────────────────
     if action == "profile_birthdate":
         await save_profile_field(uid, "birth_date", text)
         p = await get_profile(uid)
@@ -4283,8 +4626,9 @@ async def handle_message(message: Message):
         return
 
     if not await can_use_bot(uid):
+        await log_funnel_event(uid, "paywall_shown", action)
         await _edit_or_send(chat_id, prompt_msg_id,
-                            t(lang,'paywall',free=FREE_REQUESTS,stars=SUBSCRIPTION_STARS),
+                            smart_paywall_text(lang, action),
                             paywall_keyboard(lang))
         return
 
