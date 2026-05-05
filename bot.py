@@ -2263,7 +2263,6 @@ def esoterics_submenu_kb(lang: str = 'ru'):
 def account_submenu_kb(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_subscription'), callback_data="subscription")
-    kb.button(text="✨ Премиум-разбор" if lang == 'ru' else "✨ Premium reading", callback_data="premium_menu")
     kb.button(text=t(lang,'btn_promo'), callback_data="promo_input")
     kb.button(text=t(lang,'btn_gift_sub'), callback_data="gift_sub")
     kb.button(text=t(lang,'btn_referral'), callback_data="referral")
