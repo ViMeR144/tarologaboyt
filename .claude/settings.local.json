@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile tarot_bot/bot.py)",
+      "Bash(git -C c:/tarot_bot status)",
+      "Bash(python -m py_compile c:/tarot_bot/tarot_bot/bot.py)",
+      "Bash(python -c \"import ast, sys; ast.parse\\(open\\('bot.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('bot.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "PowerShell(\\(Get-Content \"c:\\\\tarot_bot\\\\tarot_bot\\\\bot.py\" | Measure-Object -Line\\).Lines)",
+      "PowerShell(python -m py_compile \"c:\\\\tarot_bot\\\\tarot_bot\\\\bot.py\" 2>&1)",
+      "PowerShell(if \\($?\\) { \"OK\" } else { \"ERRORS\" })"
+    ]
+  }
+}
