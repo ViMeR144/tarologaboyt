@@ -2856,6 +2856,7 @@ async def create_cryptobot_invoice(user_id: int, description: str = "Mystra subs
 async def create_yukassa_payment(uid: int, payment_method_type: str | None = None,
                                  amount: str = "250.00", description: str = "Mystra subscription for 30 days") -> dict | None:
     if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
+        logger.error("YuKassa config missing: shop_id or secret key is empty")
         return None
     return_url = f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "https://t.me/"
     auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
@@ -2874,6 +2875,7 @@ async def create_yukassa_payment(uid: int, payment_method_type: str | None = Non
             async with session.post("https://api.yookassa.ru/v3/payments",
                                     json=payload, auth=auth, headers=headers) as resp:
                 data = await resp.json()
+                logger.info(f"YuKassa create payment response for user {uid}: {data}")
                 if "id" not in data:
                     logger.error(f"YuKassa create payment error response: {data}")
                 return data
@@ -4371,8 +4373,10 @@ async def buy_vip_stars_cb(callback: CallbackQuery):
 async def buy_rub_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
+    logger.info(f"buy_rub_cb called by user {uid}")
     await log_funnel_event(uid, "buy_clicked", "yookassa_subscription")
     if not YUKASSA_SHOP_ID:
+        logger.error("buy_rub_cb aborted: YUKASSA_SHOP_ID is empty")
         msg = "YooKassa is not configured. Set YK_SBP in Railway Variables." if lang != "ru" else "YooKassa не настроена. Добавьте YK_SBP в Railway Variables."
         await callback.answer(msg, show_alert=True); return
     await callback.answer()
