@@ -2425,11 +2425,10 @@ async def settings_title_text(user_id: int, lang: str) -> str:
         f"Astro+Tarot: *{astro_label}*"
     )
 
-async def settings_kb(user_id: int, lang: str = 'ru'):
+async def communication_style_kb(user_id: int, lang: str = 'ru'):
     mode = await get_response_mode(user_id)
     tone = await get_tone_style(user_id)
     astro = await get_astro_tarot_enabled(user_id)
-    hour = await get_notify_hour(user_id)
     kb = InlineKeyboardBuilder()
     kb.button(text=("✅ Коротко" if mode == "short" else "Коротко") if lang == 'ru' else ("✅ Short" if mode == "short" else "Short"), callback_data="resp_mode_short")
     kb.button(text=("✅ Подробно" if mode == "detailed" else "Подробно") if lang == 'ru' else ("✅ Detailed" if mode == "detailed" else "Detailed"), callback_data="resp_mode_detailed")
@@ -2438,6 +2437,14 @@ async def settings_kb(user_id: int, lang: str = 'ru'):
     kb.button(text=("✅ Мистически" if tone == "mystic" else "Мистически") if lang == 'ru' else ("✅ Mystic" if tone == "mystic" else "Mystic"), callback_data="tone_mystic")
     kb.button(text=("✅ Прямо" if tone == "direct" else "Прямо") if lang == 'ru' else ("✅ Direct" if tone == "direct" else "Direct"), callback_data="tone_direct")
     kb.button(text=f"Astro+Tarot: {'ON' if astro else 'OFF'}", callback_data="toggle_astro_tarot")
+    kb.button(text=t(lang,'btn_back'), callback_data="settings_menu")
+    kb.adjust(2, 2, 2, 1, 1)
+    return kb.as_markup()
+
+async def settings_kb(user_id: int, lang: str = 'ru'):
+    hour = await get_notify_hour(user_id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🗣 Стиль общения" if lang == 'ru' else "🗣 Communication Style", callback_data="communication_style_menu")
     kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
     kb.button(text=t(lang,'btn_language'), callback_data="change_language")
@@ -2445,7 +2452,7 @@ async def settings_kb(user_id: int, lang: str = 'ru'):
     kb.button(text=t(lang,'btn_clear_profile'), callback_data="profile_clear")
     kb.button(text=t(lang,'btn_delete_account'), callback_data="delete_account")
     kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
-    kb.adjust(2, 2, 2, 1, 2, 2, 1)
+    kb.adjust(1, 1, 1, 1, 2, 1, 1)
     return kb.as_markup()
 
 def career_menu_kb(lang: str = 'ru'):
