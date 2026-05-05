@@ -46,7 +46,6 @@ YOOKASSA_WEBHOOK_PATH = os.getenv("YOOKASSA_WEBHOOK_PATH", "/yookassa/webhook")
 PORT = int(os.getenv("PORT", "8080"))
 
 SUBSCRIPTION_STARS = 100
-VIP_SUBSCRIPTION_STARS = 1299
 PREMIUM_PRODUCT_PRICES = {
     "love_plus": 249,
     "month_forecast": 299,
@@ -1627,17 +1626,7 @@ async def get_subscription_tier(user_id: int) -> str:
         async with db.execute("SELECT COALESCE(subscription_tier,'standard') FROM users WHERE user_id=?", (user_id,)) as c:
             row = await c.fetchone()
             tier = row[0] if row else "standard"
-    return tier if tier in {"standard", "vip"} else "standard"
-
-async def set_subscription_tier(user_id: int, tier: str):
-    if tier not in {"standard", "vip"}:
-        return
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE users SET subscription_tier=? WHERE user_id=?", (tier, user_id))
-        await db.commit()
-
-async def has_vip_subscription(user_id: int) -> bool:
-    return await has_subscription(user_id) and await get_subscription_tier(user_id) == "vip"
+    return "standard"
 
 def response_mode_instruction(mode: str, lang: str = "ru") -> str:
     if mode == "short":
@@ -1681,14 +1670,6 @@ def astro_tarot_instruction(profile: dict, enabled: bool, lang: str = "ru") -> s
         f"Astro+Tarot mode is enabled. Use the user's zodiac sign ({zodiac}) as an extra interpretive layer without replacing the meaning of the cards."
     )
 
-def vip_instruction(is_vip: bool, lang: str = "ru") -> str:
-    if not is_vip:
-        return ""
-    return (
-        "Пользователь с VIP-подпиской. Дай особенно глубокий, точный и персонализированный ответ."
-        if lang == "ru" else
-        "The user has a VIP subscription. Give an especially deep, accurate, and personalized answer."
-    )
 
 def profile_prompt_context(profile: dict, lang: str = "ru") -> str:
     if not profile:
@@ -2573,7 +2554,6 @@ def subscription_keyboard(has_sub: bool, lang: str = 'ru', back_to: str = "accou
     kb = InlineKeyboardBuilder()
     if not has_sub:
         kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
-        kb.button(text=(f"👑 VIP — {VIP_SUBSCRIPTION_STARS} Stars" if lang == 'ru' else f"👑 VIP — {VIP_SUBSCRIPTION_STARS} Stars"), callback_data="buy_vip_stars")
         kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
         if CRYPTOBOT_TOKEN:
             kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
@@ -2718,9 +2698,8 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
         user_mode = await get_response_mode(uid)
         user_tone = await get_tone_style(uid)
         astro_context = astro_tarot_instruction(profile, await get_astro_tarot_enabled(uid), lang)
-        vip_context = vip_instruction(await has_vip_subscription(uid), lang)
         original_prompt = prompt
-        extra_context = "\n".join(part for part in [astro_context, vip_context] if part)
+        extra_context = "\n".join(part for part in [astro_context] if part)
         if extra_context:
             prompt = f"{extra_context}\n\n{prompt}"
         if profile_context:
@@ -4348,13 +4327,10 @@ async def subscription_cb(callback: CallbackQuery):
     streak = await get_streak(uid)
     if has_sub and expiry:
         text = t(lang,'sub_active', date=expiry.strftime('%d.%m.%Y'), count=count, streak=streak)
-        if tier == "vip":
-            text += "\n\n👑 *VIP tier active*" if lang != "ru" else "\n\n👑 *VIP-уровень активен*"
     else:
         bonus = await get_bonus_requests(uid)
         remaining = max(0, FREE_REQUESTS + bonus - count)
         text = t(lang,'sub_inactive', remaining=remaining, free=FREE_REQUESTS+bonus, stars=SUBSCRIPTION_STARS, streak=streak)
-        text += f"\n\n👑 VIP: *{VIP_SUBSCRIPTION_STARS} Stars*" if lang == "ru" else f"\n\n👑 VIP: *{VIP_SUBSCRIPTION_STARS} Stars*"
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=subscription_keyboard(has_sub, lang, "account_menu"))
     await callback.answer()
 
@@ -4365,21 +4341,6 @@ async def buy_stars_cb(callback: CallbackQuery):
     await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
                            description=t(lang,'invoice_desc'), payload="sub_30d_stars",
                            currency="XTR", prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_STARS)])
-    await callback.answer()
-
-@dp.callback_query(F.data == "buy_vip_stars")
-async def buy_vip_stars_cb(callback: CallbackQuery):
-    uid = callback.from_user.id
-    lang = await get_user_lang(uid)
-    await log_funnel_event(uid, "buy_clicked", "vip_subscription")
-    await bot.send_invoice(
-        chat_id=uid,
-        title="👑 Mystra VIP",
-        description="VIP subscription for 30 days" if lang != "ru" else "VIP-подписка на 30 дней",
-        payload="sub_30d_vip_stars",
-        currency="XTR",
-        prices=[LabeledPrice(label="VIP", amount=VIP_SUBSCRIPTION_STARS)]
-    )
     await callback.answer()
 
 @dp.callback_query(F.data == "buy_rub")
@@ -4630,28 +4591,6 @@ async def successful_payment_handler(message: Message):
                 f"🎁 *Подарочная подписка куплена*\n"
                 f"👤 {uname}\n💰 {amount_str}\n🎟 Код: `{code}`",
                 parse_mode="Markdown")
-    elif payload == "sub_30d_vip_stars":
-        expiry = await activate_subscription(uid, 30, "vip")
-        await log_funnel_event(uid, "payment_success", "vip_subscription")
-        await message.answer(
-            (
-                f"👑 *VIP-подписка активирована!*\n\nДействует до *{expiry.strftime('%d.%m.%Y')}*.\n"
-                "Теперь бот будет отвечать глубже, точнее и заметно более персонализированно."
-            ) if lang == 'ru' else
-            (
-                f"👑 *VIP subscription activated!*\n\nValid until *{expiry.strftime('%d.%m.%Y')}*.\n"
-                "The bot will now answer more deeply, more precisely, and with stronger personalization."
-            ),
-            parse_mode="Markdown", reply_markup=main_menu(lang))
-        if ADMIN_ID:
-            await bot.send_message(
-                ADMIN_ID,
-                f"👑 *Новая VIP-оплата!*\n"
-                f"👤 {uname} (`{uid}`)\n"
-                f"💵 Сумма: {amount_str}\n"
-                f"📅 VIP до: {expiry.strftime('%d.%m.%Y')}",
-                parse_mode="Markdown"
-            )
     elif payload == "premium_deep_stars":
         await grant_one_time_entitlement(uid, "premium_deep")
         await log_funnel_event(uid, "payment_success", "premium_deep")
