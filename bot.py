@@ -55,7 +55,6 @@ PREMIUM_PRODUCT_PRICES = {
 SUBSCRIPTION_RUB = 25000
 SUBSCRIPTION_USD = 300  # cents ($4.99)
 SUBSCRIPTION_USDT = "3.00"
-PREMIUM_READING_STARS = 35
 FREE_REQUESTS = 5
 DB_PATH = os.getenv("DB_PATH", "tarot_bot.db")
 MOSCOW_TZ = timezone(timedelta(hours=3))
@@ -1408,6 +1407,7 @@ async def init_db():
             created_at TEXT DEFAULT (datetime('now')))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS yookassa_invoices (
             payment_id TEXT PRIMARY KEY, user_id INTEGER,
+            recipient_uid INTEGER DEFAULT NULL,
             created_at TEXT DEFAULT (datetime('now')))""")
         await db.execute("""CREATE TABLE IF NOT EXISTS payments (
             payment_id TEXT PRIMARY KEY, user_id INTEGER,
@@ -1450,6 +1450,10 @@ async def init_db():
                 await db.execute(f"ALTER TABLE readings_history ADD COLUMN {hist_col}")
             except Exception:
                 pass
+        try:
+            await db.execute("ALTER TABLE yookassa_invoices ADD COLUMN recipient_uid INTEGER DEFAULT NULL")
+        except Exception:
+            pass
         await db.commit()
 
 async def get_user_lang(user_id: int) -> str:
@@ -1500,29 +1504,6 @@ async def save_feedback(user_id: int, action: str, rating: str, note: str = ""):
                          (user_id, action, rating, note[:300] if note else None))
         await db.commit()
 
-async def grant_one_time_entitlement(user_id: int, kind: str = "premium_deep"):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("INSERT INTO one_time_entitlements (user_id,kind) VALUES (?,?)", (user_id, kind))
-        await db.commit()
-
-async def has_one_time_entitlement(user_id: int, kind: str = "premium_deep") -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT 1 FROM one_time_entitlements WHERE user_id=? AND kind=? AND used=0 LIMIT 1",
-            (user_id, kind)) as c:
-            return bool(await c.fetchone())
-
-async def consume_one_time_entitlement(user_id: int, kind: str = "premium_deep") -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT id FROM one_time_entitlements WHERE user_id=? AND kind=? AND used=0 ORDER BY id LIMIT 1",
-            (user_id, kind)) as c:
-            row = await c.fetchone()
-        if not row:
-            return False
-        await db.execute("UPDATE one_time_entitlements SET used=1, used_at=datetime('now') WHERE id=?", (row[0],))
-        await db.commit()
-    return True
 
 async def update_streak(user_id: int) -> tuple:
     today = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
@@ -1999,15 +1980,7 @@ async def get_admin_funnel_stats():
             "SELECT rating, COUNT(*) FROM reading_feedback GROUP BY rating ORDER BY COUNT(*) DESC"
         ) as c:
             ratings = await c.fetchall()
-        async with db.execute(
-            "SELECT COUNT(*) FROM one_time_entitlements WHERE kind='premium_deep'"
-        ) as c:
-            premium_total = (await c.fetchone())[0]
-        async with db.execute(
-            "SELECT COUNT(*) FROM one_time_entitlements WHERE kind='premium_deep' AND used=1"
-        ) as c:
-            premium_used = (await c.fetchone())[0]
-    return events, ratings, premium_total, premium_used
+    return events, ratings
 
 async def get_top_users(limit: int = 10):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -2334,14 +2307,12 @@ def result_keyboard(lang: str, back_to: str = "back_main", with_followups: bool 
             kb.button(text="💬 Задать доп. вопрос", callback_data="follow_custom")
             kb.button(text="🧭 Что делать?", callback_data="follow_advice")
             kb.button(text="⏳ Сроки", callback_data="follow_timing")
-            kb.button(text="✨ Глубокий разбор", callback_data="premium_deep")
             kb.button(text="👍 Попало", callback_data="rate_good")
             kb.button(text="👎 Не попало", callback_data="rate_bad")
         else:
             kb.button(text="💬 Follow-up", callback_data="follow_custom")
             kb.button(text="🧭 Advice", callback_data="follow_advice")
             kb.button(text="⏳ Timing", callback_data="follow_timing")
-            kb.button(text="✨ Deep reading", callback_data="premium_deep")
             kb.button(text="👍 Helpful", callback_data="rate_good")
             kb.button(text="👎 Not helpful", callback_data="rate_bad")
     if back_to == "back_main":
@@ -2629,7 +2600,6 @@ def smart_paywall_text(lang: str, action: str = "", ab: str = 'A') -> str:
 def paywall_keyboard(lang: str = 'ru', back_to: str = "back_main"):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
-    kb.button(text=f"✨ Разовый глубокий разбор — {PREMIUM_READING_STARS} Stars" if lang == 'ru' else f"✨ One deep reading — {PREMIUM_READING_STARS} Stars", callback_data="premium_deep")
     kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
     if CRYPTOBOT_TOKEN:
         kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
@@ -3345,6 +3315,21 @@ async def adm_ban_cb(callback: CallbackQuery):
         await db.execute("UPDATE users SET is_banned=1 WHERE user_id=?", (uid,))
         await db.commit()
     await callback.answer("⛔ Пользователь заблокирован", show_alert=True)
+    lang = await get_user_lang(uid)
+    ban_text = (
+        f"⛔ *Ваш аккаунт заблокирован.*\n\n"
+        f"Если вы считаете, что это ошибка — обратитесь в техническую поддержку."
+        if lang == 'ru' else
+        f"⛔ *Your account has been banned.*\n\n"
+        f"If you believe this is a mistake, please contact technical support."
+    )
+    kb = InlineKeyboardBuilder()
+    kb.button(text=("📩 Написать в поддержку" if lang == 'ru' else "📩 Contact support"),
+              url=f"https://t.me/{SUPPORT_USERNAME}")
+    try:
+        await bot.send_message(uid, ban_text, parse_mode="Markdown", reply_markup=kb.as_markup())
+    except Exception:
+        pass
     await _refresh_user_card(callback, uid)
 
 @dp.callback_query(F.data.startswith("adm_unban_"))
@@ -3355,6 +3340,17 @@ async def adm_unban_cb(callback: CallbackQuery):
         await db.execute("UPDATE users SET is_banned=0 WHERE user_id=?", (uid,))
         await db.commit()
     await callback.answer("✅ Пользователь разбанен", show_alert=True)
+    lang = await get_user_lang(uid)
+    unban_text = (
+        "✅ *Ваш аккаунт разблокирован.*\n\nДобро пожаловать обратно! Можете продолжить использование бота."
+        if lang == 'ru' else
+        "✅ *Your account has been unbanned.*\n\nWelcome back! You can continue using the bot."
+    )
+    try:
+        await bot.send_message(uid, unban_text, parse_mode="Markdown",
+                               reply_markup=main_menu(lang))
+    except Exception:
+        pass
     await _refresh_user_card(callback, uid)
 
 @dp.callback_query(F.data.startswith("adm_revoke_"))
@@ -3549,7 +3545,7 @@ async def adm_top_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "adm_funnel")
 async def adm_funnel_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
-    events, ratings, premium_total, premium_used = await get_admin_funnel_stats()
+    events, ratings = await get_admin_funnel_stats()
     text = "📈 *Воронка и качество*\n\n*События:*\n"
     if events:
         for event, cnt in events:
@@ -3562,7 +3558,7 @@ async def adm_funnel_cb(callback: CallbackQuery):
             text += f"• `{rating}` — *{cnt}*\n"
     else:
         text += "• пока нет оценок\n"
-    text += f"\n*Разовые премиум-разборы:* {premium_used}/{premium_total} использовано"
+
     kb = InlineKeyboardBuilder()
     kb.button(text="🔄 Обновить", callback_data="adm_funnel")
     kb.button(text="🏠 Меню", callback_data="adm_main")
@@ -4658,45 +4654,6 @@ async def buy_card_cb(callback: CallbackQuery):
                            prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_USD)])
     await callback.answer()
 
-@dp.callback_query(F.data == "premium_menu")
-async def premium_menu_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
-    text = (f"✨ *Премиум-разбор*\n\n"
-            f"Разовый глубокий ответ без покупки подписки.\n\n"
-            f"Стоимость: *{PREMIUM_READING_STARS} Stars*\n\n"
-            "Можно использовать для уточнения последнего расклада или для нового большого вопроса."
-            if lang == 'ru' else
-            f"✨ *Premium reading*\n\nOne deep answer without subscription.\n\nPrice: *{PREMIUM_READING_STARS} Stars*")
-    kb = InlineKeyboardBuilder()
-    kb.button(text=f"✨ Купить за {PREMIUM_READING_STARS} Stars" if lang == 'ru' else f"✨ Buy for {PREMIUM_READING_STARS} Stars", callback_data="premium_deep")
-    kb.button(text=t(lang, 'btn_back'), callback_data="account_menu")
-    kb.adjust(1)
-    await safe_edit(callback, text, markup=kb.as_markup())
-    await callback.answer()
-
-@dp.callback_query(F.data == "premium_deep")
-async def premium_deep_cb(callback: CallbackQuery):
-    uid = callback.from_user.id
-    lang = await get_user_lang(uid)
-    await log_funnel_event(uid, "premium_deep_clicked", last_reading_contexts.get(uid, {}).get("action", "no_context"))
-    if await has_one_time_entitlement(uid, "premium_deep"):
-        user_states[uid] = {
-            "action": "premium_deep_question",
-            "prompt_msg_id": callback.message.message_id,
-            "chat_id": callback.message.chat.id,
-        }
-        text = "✨ Напишите вопрос для глубокого разбора:" if lang == 'ru' else "✨ Write your question for the deep reading:"
-        await safe_edit(callback, text, cancel_keyboard(lang))
-        await callback.answer()
-        return
-    await bot.send_invoice(
-        chat_id=uid,
-        title="✨ Глубокий разбор Mystra" if lang == 'ru' else "✨ Mystra deep reading",
-        description="Один разовый глубокий разбор" if lang == 'ru' else "One deep reading",
-        payload="premium_deep_stars",
-        currency="XTR",
-        prices=[LabeledPrice(label="Deep reading", amount=PREMIUM_READING_STARS)])
-    await callback.answer()
 
 @dp.callback_query(F.data.in_({"rate_good", "rate_bad"}))
 async def rate_reading_cb(callback: CallbackQuery):
@@ -4794,18 +4751,6 @@ async def successful_payment_handler(message: Message):
             await bot.send_message(ADMIN_ID,
                 f"🎁 *Подарочная подписка куплена*\n"
                 f"👤 {uname}\n💰 {amount_str}\n🎟 Код: `{code}`",
-                parse_mode="Markdown")
-    elif payload == "premium_deep_stars":
-        await grant_one_time_entitlement(uid, "premium_deep")
-        await log_funnel_event(uid, "payment_success", "premium_deep")
-        user_states[uid] = {"action": "premium_deep_question"}
-        await message.answer(
-            "✨ *Глубокий разбор оплачен!*\n\nНапишите ваш вопрос одним сообщением." if lang == 'ru'
-            else "✨ *Deep reading paid!*\n\nWrite your question in one message.",
-            parse_mode="Markdown", reply_markup=cancel_keyboard(lang))
-        if ADMIN_ID:
-            await bot.send_message(ADMIN_ID,
-                f"✨ *Разовый премиум-разбор оплачен*\n👤 {uname} (`{uid}`)\n💵 {amount_str}",
                 parse_mode="Markdown")
     else:
         expiry = await activate_subscription(uid, 30, "standard")
@@ -4961,7 +4906,9 @@ async def gift_pay_cb(callback: CallbackQuery):
             f"🎁 *Gift Subscription*\n\nRecipient: *{rname}*\n\nChoose payment method (30 days):")
     kb = InlineKeyboardBuilder()
     kb.button(text=f"⭐ {SUBSCRIPTION_STARS} Stars", callback_data=f"gift_stars_{recipient_uid}")
-    if YUKASSA_TOKEN:
+    if YUKASSA_SHOP_ID and YUKASSA_SECRET_KEY:
+        kb.button(text="💳 ЮКасса — 250 ₽", callback_data=f"gift_yk_{recipient_uid}")
+    elif YUKASSA_TOKEN:
         kb.button(text="💳 ЮКасса — 250 ₽", callback_data=f"gift_rub_{recipient_uid}")
     if CRYPTOBOT_TOKEN:
         kb.button(text="💎 Crypto — $4.99", callback_data=f"gift_crypto_{recipient_uid}")
@@ -4997,6 +4944,47 @@ async def gift_rub_cb(callback: CallbackQuery):
         payload=f"gift_uid_{recipient_uid}_rub",
         provider_token=YUKASSA_TOKEN, currency="RUB",
         prices=[LabeledPrice(label="Подписка 30 дней", amount=SUBSCRIPTION_RUB)])
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("gift_yk_"))
+async def gift_yk_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    recipient_uid = int(callback.data.split("_")[2])
+    if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
+        await callback.answer("❌ ЮКасса не подключена", show_alert=True)
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT username FROM users WHERE user_id=?", (recipient_uid,)) as c:
+            row = await c.fetchone()
+    rname = f"@{row[0]}" if row and row[0] and row[0] != "unknown" else f"id:{recipient_uid}"
+    desc = (f"Mystra — gift subscription for {rname}" if lang == 'en'
+            else f"Mystra — подарочная подписка для {rname}")
+    payment_data = await create_yukassa_payment(uid, description=desc)
+    if not payment_data or "id" not in payment_data:
+        err = extract_yookassa_error(payment_data)
+        await callback.answer(f"❌ {err}", show_alert=True)
+        return
+    payment_id = payment_data["id"]
+    confirm_url = (payment_data.get("confirmation") or {}).get("confirmation_url", "")
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO yookassa_invoices (payment_id, user_id, recipient_uid) VALUES (?,?,?)",
+            (payment_id, uid, recipient_uid))
+        await db.commit()
+    kb = InlineKeyboardBuilder()
+    if confirm_url:
+        kb.button(text="💳 Оплатить — 250 ₽", url=confirm_url)
+    kb.button(text=t(lang, 'btn_back'), callback_data=f"gift_pay_{recipient_uid}")
+    kb.adjust(1)
+    gift_text = (
+        f"🎁 *Оплата ЮКасса — подарок*\n\nПолучатель: *{rname}*\n\nСумма: *250 ₽*\n\n"
+        f"После оплаты подписка автоматически активируется получателю."
+        if lang == 'ru' else
+        f"🎁 *YooKassa Payment — Gift*\n\nRecipient: *{rname}*\n\nAmount: *250 ₽*\n\n"
+        f"Subscription will be activated for the recipient automatically after payment."
+    )
+    await safe_edit(callback, gift_text, markup=kb.as_markup())
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("gift_crypto_"))
@@ -5268,12 +5256,9 @@ async def handle_message(message: Message):
 
     text = message.text or ""
 
-    if action in {"followup_question", "premium_deep_question"}:
+    if action == "followup_question":
         ctx = last_reading_contexts.get(uid, {})
-        if action == "premium_deep_question" and not await consume_one_time_entitlement(uid, "premium_deep"):
-            await bot.send_message(chat_id, "❌ Премиум-разбор не найден. Откройте меню премиум-разбора ещё раз." if lang == 'ru' else "❌ Premium reading was not found.")
-            return
-        if action == "followup_question" and not await can_use_bot(uid):
+        if not await can_use_bot(uid):
             await bot.send_message(chat_id, smart_paywall_text(lang, ctx.get("action", "followup")),
                                    parse_mode="Markdown", reply_markup=paywall_keyboard(lang, resolve_back_target(ctx.get("action", "followup"))))
             await log_funnel_event(uid, "paywall_shown", "followup")
@@ -5284,11 +5269,11 @@ async def handle_message(message: Message):
                       "Ответь строго в контексте выбранной темы и предыдущего расклада. "
                       "Не повторяй весь предыдущий ответ, дай новое уточнение.")
         else:
-            prompt = f"Глубокий премиум-разбор вопроса пользователя: {text}\n\nДай подробный структурированный ответ."
+            prompt = f"Дополнительный вопрос пользователя: {text}\n\nДай развёрнутый ответ."
         prompt = f"{prompt}\n\n{response_mode_instruction(await get_response_mode(uid), lang)}"
-        header = "✨ *Глубокий разбор*" if action == "premium_deep_question" else "💬 *Дополнительный вопрос*"
+        header = "💬 *Дополнительный вопрос*"
         await _do_request(uid, message.from_user.username,
-                          "premium_deep" if action == "premium_deep_question" else "followup",
+                          "followup",
                           chat_id, prompt_msg_id, prompt, lang, header)
         return
 
@@ -5304,18 +5289,25 @@ async def handle_message(message: Message):
                     row = await c.fetchone()
         if not row:
             kb = InlineKeyboardBuilder()
-            kb.button(text="🔄 Попробовать снова", callback_data="gift_sub")
+            kb.button(text="🔄 Попробовать снова" if lang == 'ru' else "🔄 Try again", callback_data="gift_sub")
             kb.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
             kb.adjust(1)
-            await bot.send_message(chat_id, "❌ Пользователь не найден. Убедитесь, что он уже запускал бота.", reply_markup=kb.as_markup())
+            not_found_text = ("❌ Пользователь не найден. Убедитесь, что он уже запускал бота."
+                              if lang == 'ru' else
+                              "❌ User not found. Make sure they have already started the bot.")
+            await bot.send_message(chat_id, not_found_text, reply_markup=kb.as_markup())
         else:
             recipient_uid, rname = row
             rname_str = f"@{rname}" if rname and rname != "unknown" else f"id:{recipient_uid}"
             kb = InlineKeyboardBuilder()
-            kb.button(text=f"✅ Да, выбрать {rname_str}", callback_data=f"gift_pay_{recipient_uid}")
-            kb.button(text="🔄 Другой пользователь", callback_data="gift_sub")
+            kb.button(text=(f"✅ Да, выбрать {rname_str}" if lang == 'ru' else f"✅ Select {rname_str}"),
+                      callback_data=f"gift_pay_{recipient_uid}")
+            kb.button(text=("🔄 Другой пользователь" if lang == 'ru' else "🔄 Another user"),
+                      callback_data="gift_sub")
             kb.adjust(1)
-            await bot.send_message(chat_id, f"🎁 Получатель: *{rname_str}*\n\nПодтвердить?", parse_mode="Markdown", reply_markup=kb.as_markup())
+            confirm_text = (f"🎁 Получатель: *{rname_str}*\n\nПодтвердить?" if lang == 'ru'
+                            else f"🎁 Recipient: *{rname_str}*\n\nConfirm?")
+            await bot.send_message(chat_id, confirm_text, parse_mode="Markdown", reply_markup=kb.as_markup())
         return
 
     # ── Admin: search user ────────────────────────────────────────────────────
@@ -5605,49 +5597,78 @@ async def _handle_yookassa_webhook(request: aiohttp.web.Request) -> aiohttp.web.
     if event == "payment.succeeded" and payment_id:
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute(
-                "SELECT user_id FROM yookassa_invoices WHERE payment_id=?", (payment_id,)
+                "SELECT user_id, recipient_uid FROM yookassa_invoices WHERE payment_id=?", (payment_id,)
             )
             row = await cur.fetchone()
         if row:
-            user_id = row[0]
+            payer_id = row[0]
+            recipient_uid = row[1]
+            activate_for = recipient_uid if recipient_uid else payer_id
+            is_gift = bool(recipient_uid and recipient_uid != payer_id)
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute(
                     "INSERT OR IGNORE INTO payments (payment_id, user_id, method, amount, currency) VALUES (?,?,?,?,?)",
-                    (payment_id, user_id, "yookassa",
+                    (payment_id, payer_id,
+                     f"yookassa_gift_{recipient_uid}" if is_gift else "yookassa",
                      obj.get("amount", {}).get("value", "250.00"), "RUB")
                 )
                 await db.commit()
-            lang = await get_user_lang(user_id)
-            expiry = await activate_subscription(user_id, 30, "standard")
-            await log_funnel_event(user_id, "payment_success", "yookassa_webhook")
-            await maybe_reward_referrer(user_id, "💳 ЮКасса")
+            expiry = await activate_subscription(activate_for, 30, "standard")
+            await log_funnel_event(payer_id, "payment_success", "yookassa_webhook")
+            if not is_gift:
+                await maybe_reward_referrer(payer_id, "💳 ЮКасса")
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute(
                     "DELETE FROM yookassa_invoices WHERE payment_id=?", (payment_id,)
                 )
                 await db.commit()
-            try:
-                await bot.send_message(
-                    user_id,
-                    t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
-                    parse_mode="Markdown",
-                    reply_markup=main_menu(lang)
+            if is_gift:
+                payer_lang = await get_user_lang(payer_id)
+                recip_lang = await get_user_lang(activate_for)
+                payer_text = (
+                    f"🎁 *Подарок отправлен!*\n\nПодписка успешно активирована получателю до {expiry.strftime('%d.%m.%Y')}."
+                    if payer_lang == 'ru' else
+                    f"🎁 *Gift sent!*\n\nSubscription activated for the recipient until {expiry.strftime('%d.%m.%Y')}."
                 )
-            except Exception as e:
-                logger.error(f"YooKassa webhook: send_message error for {user_id}: {e}")
+                recip_text = (
+                    f"🎁 *Вам подарили подписку!*\n\nПодписка активна до {expiry.strftime('%d.%m.%Y')}. Приятного использования!"
+                    if recip_lang == 'ru' else
+                    f"🎁 *You received a gift subscription!*\n\nActive until {expiry.strftime('%d.%m.%Y')}. Enjoy!"
+                )
+                try:
+                    await bot.send_message(payer_id, payer_text, parse_mode="Markdown",
+                                           reply_markup=main_menu(payer_lang))
+                except Exception as e:
+                    logger.error(f"YooKassa webhook gift: notify payer {payer_id} error: {e}")
+                try:
+                    await bot.send_message(activate_for, recip_text, parse_mode="Markdown",
+                                           reply_markup=main_menu(recip_lang))
+                except Exception as e:
+                    logger.error(f"YooKassa webhook gift: notify recipient {activate_for} error: {e}")
+            else:
+                lang = await get_user_lang(payer_id)
+                try:
+                    await bot.send_message(
+                        payer_id,
+                        t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
+                        parse_mode="Markdown",
+                        reply_markup=main_menu(lang)
+                    )
+                except Exception as e:
+                    logger.error(f"YooKassa webhook: send_message error for {payer_id}: {e}")
             if ADMIN_ID:
                 amount = obj.get("amount", {}).get("value", "?")
                 method = obj.get("payment_method", {}).get("type", "unknown")
+                admin_text = (
+                    f"💰 *Новая оплата (webhook)!*\n"
+                    f"👤 Плательщик: id:{payer_id}\n"
+                    + (f"🎁 Получатель: id:{activate_for}\n" if is_gift else "")
+                    + f"💳 Способ: {method}\n"
+                    f"💵 Сумма: {amount} RUB\n"
+                    f"📅 Подписка до: {expiry.strftime('%d.%m.%Y')}"
+                )
                 try:
-                    await bot.send_message(
-                        ADMIN_ID,
-                        f"💰 *Новая оплата (webhook)!*\n"
-                        f"👤 id:{user_id}\n"
-                        f"💳 Способ: {method}\n"
-                        f"💵 Сумма: {amount} RUB\n"
-                        f"📅 Подписка до: {expiry.strftime('%d.%m.%Y')}",
-                        parse_mode="Markdown"
-                    )
+                    await bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
                 except Exception:
                     pass
         else:
