@@ -1763,6 +1763,11 @@ async def grant_subscription(user_id: int, days: int = 30) -> datetime:
         await db.commit()
     return expires_at
 
+async def activate_subscription(user_id: int, days: int = 30, tier: str = "standard") -> datetime:
+    expiry = await grant_subscription(user_id, days)
+    await set_subscription_tier(user_id, tier)
+    return expiry
+
 async def get_subscription_expiry(user_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT expires_at FROM subscriptions WHERE user_id=?", (user_id,)) as c:
@@ -2919,7 +2924,7 @@ async def check_yukassa_payments():
                                     (payment_id, user_id, "yookassa", "250.00", "RUB"))
                                 await db.commit()
                             lang = await get_user_lang(user_id)
-                            expiry = await grant_subscription(user_id, 30)
+                            expiry = await activate_subscription(user_id, 30, "standard")
                             await log_funnel_event(user_id, "payment_success", "yookassa_subscription")
                             await bot.send_message(user_id,
                                 t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
@@ -2968,7 +2973,7 @@ async def check_crypto_payments():
             pending_map = {r[0]: r[1] for r in pending}
             for invoice_id, user_id in pending_map.items():
                 if invoice_id in paid_ids:
-                    expiry = await grant_subscription(user_id, 30)
+                    expiry = await activate_subscription(user_id, 30, "standard")
                     await log_funnel_event(user_id, "payment_success", "crypto_subscription")
                     lang = await get_user_lang(user_id)
                     await bot.send_message(
@@ -4550,7 +4555,7 @@ async def successful_payment_handler(message: Message):
         parts = payload.split("_")
         recipient_uid = int(parts[2])
         method_name = parts[3] if len(parts) > 3 else "stars"
-        expiry = await grant_subscription(recipient_uid, 30)
+        expiry = await activate_subscription(recipient_uid, 30, "standard")
         # notify buyer
         await message.answer(
             f"🎁 *Подарок отправлен!*\n\nПодписка активирована для `{recipient_uid}` до *{expiry.strftime('%d.%m.%Y')}*",
@@ -4584,6 +4589,28 @@ async def successful_payment_handler(message: Message):
                 f"🎁 *Подарочная подписка куплена*\n"
                 f"👤 {uname}\n💰 {amount_str}\n🎟 Код: `{code}`",
                 parse_mode="Markdown")
+    elif payload == "sub_30d_vip_stars":
+        expiry = await activate_subscription(uid, 30, "vip")
+        await log_funnel_event(uid, "payment_success", "vip_subscription")
+        await message.answer(
+            (
+                f"👑 *VIP-подписка активирована!*\n\nДействует до *{expiry.strftime('%d.%m.%Y')}*.\n"
+                "Теперь бот будет отвечать глубже, точнее и заметно более персонализированно."
+            ) if lang == 'ru' else
+            (
+                f"👑 *VIP subscription activated!*\n\nValid until *{expiry.strftime('%d.%m.%Y')}*.\n"
+                "The bot will now answer more deeply, more precisely, and with stronger personalization."
+            ),
+            parse_mode="Markdown", reply_markup=main_menu(lang))
+        if ADMIN_ID:
+            await bot.send_message(
+                ADMIN_ID,
+                f"👑 *Новая VIP-оплата!*\n"
+                f"👤 {uname} (`{uid}`)\n"
+                f"💵 Сумма: {amount_str}\n"
+                f"📅 VIP до: {expiry.strftime('%d.%m.%Y')}",
+                parse_mode="Markdown"
+            )
     elif payload == "premium_deep_stars":
         await grant_one_time_entitlement(uid, "premium_deep")
         await log_funnel_event(uid, "payment_success", "premium_deep")
@@ -4597,7 +4624,7 @@ async def successful_payment_handler(message: Message):
                 f"✨ *Разовый премиум-разбор оплачен*\n👤 {uname} (`{uid}`)\n💵 {amount_str}",
                 parse_mode="Markdown")
     else:
-        expiry = await grant_subscription(uid, 30)
+        expiry = await activate_subscription(uid, 30, "standard")
         await log_funnel_event(uid, "payment_success", payload)
         await message.answer(t(lang,'sub_activated',date=expiry.strftime('%d.%m.%Y')),
                              parse_mode="Markdown", reply_markup=main_menu(lang))
