@@ -3189,6 +3189,24 @@ async def cmd_terms(message: Message):
 async def cmd_myid(message: Message):
     await message.answer(f"`{message.from_user.id}`", parse_mode="Markdown")
 
+@dp.message(Command("resetusers"))
+async def cmd_resetusers(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    tables = [
+        "users", "subscriptions", "payments", "yookassa_invoices",
+        "crypto_invoices", "readings_history", "reading_feedback",
+        "funnel_events", "requests", "auto_series_progress", "one_time_entitlements"
+    ]
+    async with aiosqlite.connect(DB_PATH) as db:
+        for tbl in tables:
+            try:
+                await db.execute(f"DELETE FROM {tbl}")
+            except Exception:
+                pass
+        await db.commit()
+    await message.answer("✅ Все пользователи и данные удалены.")
+
 @dp.message(Command("setphoto"))
 async def cmd_setphoto(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -3277,11 +3295,13 @@ async def adm_users_cb(callback: CallbackQuery):
 async def adm_user_detail_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         return
-    target_uid = int(callback.data.split("_")[2])
-    await _refresh_user_card(callback, target_uid)
+    parts = callback.data.split("_")
+    target_uid = int(parts[2])
+    back_to = parts[3] if len(parts) > 3 else "users"
+    await _refresh_user_card(callback, target_uid, back_to)
     await callback.answer()
 
-async def _refresh_user_card(callback: CallbackQuery, target_uid: int):
+async def _refresh_user_card(callback: CallbackQuery, target_uid: int, back_to: str = "users"):
     """Re-render user detail card after an action."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
@@ -3312,7 +3332,8 @@ async def _refresh_user_card(callback: CallbackQuery, target_uid: int):
     kb.button(text="💎 +30 дней", callback_data=f"adm_add30_{target_uid}")
     kb.button(text="🔄 Сбросить лимит", callback_data=f"adm_rlimit_{target_uid}")
     kb.button(text="✉️ Написать юзеру", callback_data=f"adm_msg_{target_uid}")
-    kb.button(text="◀️ К списку", callback_data="adm_users_0")
+    back_cd = "adm_subs_0" if back_to == "subs" else "adm_users_0"
+    kb.button(text="◀️ К списку", callback_data=back_cd)
     kb.adjust(1)
     await safe_edit(callback, text, markup=kb.as_markup())
 
@@ -3395,7 +3416,7 @@ async def adm_subs_cb(callback: CallbackQuery):
     for uid, uname, expires_at in subs:
         label_name = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
         exp_str = expires_at[:10] if expires_at else "?"
-        kb.button(text=f"💎 {label_name} — до {exp_str}", callback_data=f"adm_u_{uid}")
+        kb.button(text=f"💎 {label_name} — до {exp_str}", callback_data=f"adm_u_{uid}_subs")
     kb.adjust(1)
     nav = []
     if page > 0: nav.append(("◀️", f"adm_subs_{page-1}"))
