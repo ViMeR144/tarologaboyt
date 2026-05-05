@@ -1641,15 +1641,18 @@ async def has_vip_subscription(user_id: int) -> bool:
 def response_mode_instruction(mode: str, lang: str = "ru") -> str:
     if mode == "short":
         return (
-            "Стиль ответа: коротко. Дай сжатый, ясный ответ без длинных повторов. "
-            "Обычно 80-140 слов, только самое важное."
+            "Длина ответа: коротко. Отвечай сжато, ясно и по сути, без длинных вступлений, повторов и лишних деталей. "
+            "Обычно 60-120 слов. Дай только самое важное и один главный вывод."
             if lang == "ru" else
-            "Response style: short. Give a concise and clear answer without long repetition. Usually 80-140 words."
+            "Answer length: short. Be concise, clear, and to the point, with no long intros, repetition, or unnecessary detail. "
+            "Usually 60-120 words. Give only the essentials and one main takeaway."
         )
     return (
-        "Стиль ответа: подробно. Дай развернутый, глубокий ответ с пояснениями и нюансами."
+        "Длина ответа: подробно. Дай развернутый, глубокий и структурированный ответ с пояснениями, нюансами и практическим выводом. "
+        "Обычно 220-420 слов."
         if lang == "ru" else
-        "Response style: detailed. Give a thorough and nuanced answer."
+        "Answer length: detailed. Give a thorough, structured, and nuanced answer with explanations and a practical takeaway. "
+        "Usually 220-420 words."
     )
 
 def tone_style_instruction(style: str, lang: str = "ru") -> str:
@@ -2121,14 +2124,23 @@ async def ask_openai_stream(prompt: str, lang: str = 'ru'):
         logger.error(f"OpenAI stream error: {e}")
         yield t(lang, 'error')
 
-async def ask_openai_vision(image_bytes: bytes, lang: str = 'ru', mode: str = 'detailed') -> str:
+async def ask_openai_vision(image_bytes: bytes, lang: str = 'ru', mode: str = 'detailed', tone: str = 'balanced') -> str:
     if not openai_client:
         logger.error("OPENAI_API_KEY is not set")
         return t(lang, 'error')
     try:
         image_b64 = base64.standard_b64encode(image_bytes).decode('utf-8')
-        prompt_text = ("Проанализируй ладонь на этом фото. Дай подробное хиромантическое чтение." if lang == 'ru'
-                       else "Analyze the palm in this photo. Give a detailed palmistry reading.")
+        prompt_text = (
+            "Проанализируй ладонь на этом фото. "
+            f"{response_mode_instruction(mode, lang)} "
+            f"{tone_style_instruction(tone, lang)} "
+            "Сделай хиромантическое чтение понятным, цельным и без пустых повторов."
+            if lang == 'ru' else
+            "Analyze the palm in this photo. "
+            f"{response_mode_instruction(mode, lang)} "
+            f"{tone_style_instruction(tone, lang)} "
+            "Make the palmistry reading clear, cohesive, and free of empty repetition."
+        )
         response = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
             max_completion_tokens=1500,
@@ -5035,7 +5047,12 @@ async def handle_message(message: Message):
         await log_request(uid, message.from_user.username, "palmistry")
         await log_funnel_event(uid, "reading_started", "palmistry")
         streak, milestone = await update_streak(uid)
-        answer = await ask_openai_vision(image_bytes, lang, await get_response_mode(uid))
+        answer = await ask_openai_vision(
+            image_bytes,
+            lang,
+            await get_response_mode(uid),
+            await get_tone_style(uid),
+        )
         header = "🖐 *Хиромантическое чтение*" if lang == 'ru' else "🖐 *Palm Reading*"
         result = f"{header}\n\n{answer}"
         last_reading_contexts[uid] = {
