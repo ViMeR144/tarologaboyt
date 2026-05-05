@@ -2873,7 +2873,7 @@ async def create_yukassa_payment(uid: int, payment_method_type: str | None = Non
         return None
     return_url = f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "https://t.me/"
     auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
-    headers = {"Idempotency-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
+    headers = {"Idempotence-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
     payload = {
         "amount": {"value": amount, "currency": "RUB"},
         "confirmation": {"type": "redirect", "return_url": return_url},
@@ -4921,7 +4921,7 @@ async def refund_confirm_cb(callback: CallbackQuery):
         await callback.answer()
         return
     auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
-    headers = {"Idempotency-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
+    headers = {"Idempotence-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
     refund_payload = {
         "amount": {"value": "250.00", "currency": "RUB"},
         "payment_id": payment_id
