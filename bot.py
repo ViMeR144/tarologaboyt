@@ -2444,7 +2444,7 @@ async def communication_style_kb(user_id: int, lang: str = 'ru'):
 async def settings_kb(user_id: int, lang: str = 'ru'):
     hour = await get_notify_hour(user_id)
     kb = InlineKeyboardBuilder()
-    kb.button(text="🗣 Стиль общения" if lang == 'ru' else "🗣 Communication Style", callback_data="communication_style_menu")
+    kb.button(text="🗣 Стиль общения" if lang == 'ru' else "🗣 Communication Style", callback_data="comm_style_menu")
     kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
     kb.button(text=t(lang,'btn_language'), callback_data="change_language")
@@ -3744,22 +3744,29 @@ async def settings_menu_cb(callback: CallbackQuery):
     await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
     await callback.answer()
 
-@dp.callback_query(F.data.in_({"resp_mode_short", "resp_mode_detailed"}))
+@dp.callback_query(F.data == "comm_style_menu")
+async def communication_style_menu_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
+    await callback.answer()
+
+@dp.callback_query(F.data.in_(["resp_mode_short", "resp_mode_detailed"]))
 async def response_mode_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     mode = "short" if callback.data == "resp_mode_short" else "detailed"
     await set_response_mode(uid, mode)
-    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
+    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
     await callback.answer("Режим ответа обновлен" if lang == "ru" else "Answer mode updated")
 
-@dp.callback_query(F.data.in_({"tone_soft", "tone_balanced", "tone_mystic", "tone_direct"}))
+@dp.callback_query(F.data.in_(["tone_soft", "tone_balanced", "tone_mystic", "tone_direct"]))
 async def tone_style_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     style = callback.data.replace("tone_", "", 1)
     await set_tone_style(uid, style)
-    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
+    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
     await callback.answer("Стиль ответа обновлен" if lang == "ru" else "Answer style updated")
 
 @dp.callback_query(F.data == "toggle_astro_tarot")
@@ -3767,7 +3774,7 @@ async def toggle_astro_tarot_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     enabled = await toggle_astro_tarot(uid)
-    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
+    await safe_edit(callback, await settings_title_text(uid, lang), await communication_style_kb(uid, lang))
     await callback.answer(("Astro+Tarot включен" if enabled else "Astro+Tarot выключен") if lang == "ru" else ("Astro+Tarot enabled" if enabled else "Astro+Tarot disabled"))
 
 @dp.callback_query(F.data == "tarot_menu")
