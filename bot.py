@@ -2088,16 +2088,19 @@ async def get_notification_users_for_hour(hour: int) -> list:
     return result
 
 # ─── OPENAI ───────────────────────────────────────────────────────────────────
-async def ask_openai(prompt: str, lang: str = 'ru') -> str:
+async def ask_openai(prompt: str, lang: str = 'ru', mode: str = 'detailed', tone: str = 'balanced') -> str:
     if not openai_client:
         logger.error("OPENAI_API_KEY is not set")
         return t(lang, 'error')
+    max_tokens = 700 if mode == 'short' else 2200
+    base_system = SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])
+    full_system = f"{base_system}\n\n{response_mode_instruction(mode, lang)} {tone_style_instruction(tone, lang)}"
     try:
         response = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
-            max_completion_tokens=2200,
+            max_completion_tokens=max_tokens,
             messages=[
-                {"role": "developer", "content": SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])},
+                {"role": "developer", "content": full_system},
                 {"role": "user", "content": prompt},
             ],
         )
@@ -2106,18 +2109,21 @@ async def ask_openai(prompt: str, lang: str = 'ru') -> str:
         logger.error(f"OpenAI error: {e}")
         return t(lang, 'error')
 
-async def ask_openai_stream(prompt: str, lang: str = 'ru'):
+async def ask_openai_stream(prompt: str, lang: str = 'ru', mode: str = 'detailed', tone: str = 'balanced'):
     if not openai_client:
         logger.error("OPENAI_API_KEY is not set")
         yield t(lang, 'error')
         return
+    max_tokens = 700 if mode == 'short' else 3200
+    base_system = SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])
+    full_system = f"{base_system}\n\n{response_mode_instruction(mode, lang)} {tone_style_instruction(tone, lang)}"
     try:
         stream = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
-            max_completion_tokens=3200,
+            max_completion_tokens=max_tokens,
             stream=True,
             messages=[
-                {"role": "developer", "content": SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])},
+                {"role": "developer", "content": full_system},
                 {"role": "user", "content": prompt},
             ],
         )
@@ -2133,24 +2139,29 @@ async def ask_openai_vision(image_bytes: bytes, lang: str = 'ru', mode: str = 'd
     if not openai_client:
         logger.error("OPENAI_API_KEY is not set")
         return t(lang, 'error')
+    max_tokens = 700 if mode == 'short' else 1500
+    tone_instr = tone_style_instruction(tone, lang)
+    mode_instr = response_mode_instruction(mode, lang)
     try:
         image_b64 = base64.standard_b64encode(image_bytes).decode('utf-8')
-        prompt_text = (
-            "Проанализируй ладонь на этом фото. "
-            f"{response_mode_instruction(mode, lang)} "
-            f"{tone_style_instruction(tone, lang)} "
-            "Сделай хиромантическое чтение понятным, цельным и без пустых повторов."
-            if lang == 'ru' else
-            "Analyze the palm in this photo. "
-            f"{response_mode_instruction(mode, lang)} "
-            f"{tone_style_instruction(tone, lang)} "
-            "Make the palmistry reading clear, cohesive, and free of empty repetition."
-        )
+        if lang == 'ru':
+            prompt_text = (
+                f"Проанализируй ладонь на этом фото. {mode_instr} {tone_instr} "
+                "Сделай хиромантическое чтение понятным, цельным и без пустых повторов."
+            )
+        else:
+            prompt_text = (
+                f"Analyze the palm in this photo. {mode_instr} {tone_instr} "
+                "Make the palmistry reading clear, cohesive, and free of empty repetition."
+            )
+        palm_system = PALM_SYSTEM_PROMPTS.get(lang, PALM_SYSTEM_PROMPTS['ru'])
+        if mode == 'short':
+            palm_system = palm_system.replace("450–600 слов", "80–120 слов").replace("450-600 words", "80-120 words").replace("Length: 450–600 words", "Length: 80–120 words")
         response = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
-            max_completion_tokens=1500,
+            max_completion_tokens=max_tokens,
             messages=[
-                {"role": "developer", "content": PALM_SYSTEM_PROMPTS.get(lang, PALM_SYSTEM_PROMPTS['ru'])},
+                {"role": "developer", "content": palm_system},
                 {"role": "user", "content": [
                     {"type": "text", "text": prompt_text},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
@@ -2703,20 +2714,21 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
         streak, milestone = await update_streak(uid)
         profile = await get_profile(uid)
         profile_context = profile_prompt_context(profile, lang)
-        mode_context = response_mode_instruction(await get_response_mode(uid), lang)
-        tone_context = tone_style_instruction(await get_tone_style(uid), lang)
+        user_mode = await get_response_mode(uid)
+        user_tone = await get_tone_style(uid)
         astro_context = astro_tarot_instruction(profile, await get_astro_tarot_enabled(uid), lang)
         vip_context = vip_instruction(await has_vip_subscription(uid), lang)
         original_prompt = prompt
-        extra_context = "\n".join(part for part in [mode_context, tone_context, astro_context, vip_context] if part)
-        prompt = f"{extra_context}\n\n{prompt}"
+        extra_context = "\n".join(part for part in [astro_context, vip_context] if part)
+        if extra_context:
+            prompt = f"{extra_context}\n\n{prompt}"
         if profile_context:
             prompt = f"{profile_context}\n\nЗапрос:\n{prompt}"
-        
+
         # Потоковый вывод ответа (Streaming)
         answer = ""
         last_update = time.time()
-        async for chunk in ask_openai_stream(prompt, lang):
+        async for chunk in ask_openai_stream(prompt, lang, user_mode, user_tone):
             answer += chunk
             # Обновляем сообщение не чаще 1 раза в 1.5 секунды
             if time.time() - last_update > 1.5:
