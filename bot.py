@@ -218,6 +218,7 @@ TEXTS = {
         'btn_my_payments': "📜 История платежей",
         'btn_delete_account': "🗑 Удалить аккаунт",
         'btn_notify_time': "⏰ Время рассылки",
+        'btn_settings': "⚙️ Настройки",
         'my_stats_title': "📊 *Ваша статистика*\n\n📆 В боте с: *{since}*\n🔢 Всего раскладов: *{total}*\n🏆 Любимый тип: *{fav}*\n🔥 Серия: *{streak} дней*\n👥 Приглашено друзей: *{refs}*\n🎁 Бонусных запросов: *+{bonus}*",
         'my_payments_title': "📜 *История платежей*\n\n",
         'my_payments_empty': "📜 *История платежей*\n\nПлатежей не найдено.",
@@ -384,6 +385,7 @@ TEXTS = {
         'btn_my_payments': "📜 Payment History",
         'btn_delete_account': "🗑 Delete Account",
         'btn_notify_time': "⏰ Broadcast Time",
+        'btn_settings': "⚙️ Settings",
         'my_stats_title': "📊 *Your Statistics*\n\n📆 In bot since: *{since}*\n🔢 Total readings: *{total}*\n🏆 Favorite type: *{fav}*\n🔥 Streak: *{streak} days*\n👥 Friends invited: *{refs}*\n🎁 Bonus requests: *+{bonus}*",
         'my_payments_title': "📜 *Payment History*\n\n",
         'my_payments_empty': "📜 *Payment History*\n\nNo payments found.",
@@ -1422,7 +1424,7 @@ async def init_db():
                     "last_active_date TEXT DEFAULT NULL","is_banned INTEGER DEFAULT 0",
                     "gender TEXT DEFAULT NULL","city TEXT DEFAULT NULL",
                     "timezone TEXT DEFAULT NULL","result TEXT DEFAULT NULL",
-                    "terms_accepted INTEGER DEFAULT 0",
+                    "terms_accepted INTEGER DEFAULT 0","response_mode TEXT DEFAULT 'detailed'",
                     "notify_hour INTEGER DEFAULT 8"]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
@@ -1561,6 +1563,34 @@ async def get_profile(user_id: int) -> dict:
             return {"birth_date": row[0], "full_name": row[1], "zodiac": row[2],
                     "streak": row[3] or 0, "bonus": row[4],
                     "gender": row[5], "city": row[6], "timezone": row[7]}
+
+async def get_response_mode(user_id: int) -> str:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COALESCE(response_mode,'detailed') FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+            mode = row[0] if row else "detailed"
+    return mode if mode in {"short", "detailed"} else "detailed"
+
+async def set_response_mode(user_id: int, mode: str):
+    if mode not in {"short", "detailed"}:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET response_mode=? WHERE user_id=?", (mode, user_id))
+        await db.commit()
+
+def response_mode_instruction(mode: str, lang: str = "ru") -> str:
+    if mode == "short":
+        return (
+            "Стиль ответа: коротко. Дай сжатый, ясный ответ без длинных повторов. "
+            "Обычно 80-140 слов, только самое важное."
+            if lang == "ru" else
+            "Response style: short. Give a concise and clear answer without long repetition. Usually 80-140 words."
+        )
+    return (
+        "Стиль ответа: подробно. Дай развернутый, глубокий ответ с пояснениями и нюансами."
+        if lang == "ru" else
+        "Response style: detailed. Give a thorough and nuanced answer."
+    )
 
 def profile_prompt_context(profile: dict, lang: str = "ru") -> str:
     if not profile:
@@ -1929,6 +1959,7 @@ async def ask_openai(prompt: str, lang: str = 'ru') -> str:
         logger.error("OPENAI_API_KEY is not set")
         return t(lang, 'error')
     try:
+        prompt_text = f"{prompt_text}\n{response_mode_instruction(mode, lang)}"
         response = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
             max_completion_tokens=1024,
@@ -1965,7 +1996,7 @@ async def ask_openai_stream(prompt: str, lang: str = 'ru'):
         logger.error(f"OpenAI stream error: {e}")
         yield t(lang, 'error')
 
-async def ask_openai_vision(image_bytes: bytes, lang: str = 'ru') -> str:
+async def ask_openai_vision(image_bytes: bytes, lang: str = 'ru', mode: str = 'detailed') -> str:
     if not openai_client:
         logger.error("OPENAI_API_KEY is not set")
         return t(lang, 'error')
@@ -2049,15 +2080,14 @@ def account_submenu_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_promo'), callback_data="promo_input")
     kb.button(text=t(lang,'btn_gift_sub'), callback_data="gift_sub")
     kb.button(text=t(lang,'btn_referral'), callback_data="referral")
-    kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_profile'), callback_data="profile")
     kb.button(text=t(lang,'btn_history'), callback_data="history_view")
     kb.button(text=t(lang,'btn_tarot_library'), callback_data="tarot_library")
     kb.button(text=t(lang,'btn_my_stats'), callback_data="my_stats")
     kb.button(text=t(lang,'btn_my_payments'), callback_data="my_payments")
     kb.button(text=t(lang,'btn_support'), callback_data="support")
+    kb.button(text=t(lang,'btn_settings'), callback_data="settings_menu")
     kb.button(text=t(lang,'terms_view_btn'), callback_data="terms_view")
-    kb.button(text=t(lang,'btn_delete_account'), callback_data="delete_account")
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
     kb.adjust(2, 2, 2, 2, 2, 2, 1, 1)
     return kb.as_markup()
@@ -2210,9 +2240,35 @@ def profile_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_set_city'), callback_data="profile_set_city")
     kb.button(text=t(lang,'btn_set_timezone'), callback_data="profile_set_timezone")
     kb.button(text=t(lang,'btn_history'), callback_data="history_view")
-    kb.button(text=t(lang,'btn_clear_profile'), callback_data="profile_clear")
     kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
-    kb.adjust(2, 2, 2, 1, 1, 1)
+    kb.adjust(2, 2, 2, 1, 1)
+    return kb.as_markup()
+
+async def settings_title_text(user_id: int, lang: str) -> str:
+    mode = await get_response_mode(user_id)
+    mode_label = "Коротко" if mode == "short" else "Подробно"
+    if lang != 'ru':
+        mode_label = "Short" if mode == "short" else "Detailed"
+    return (
+        f"⚙️ *Настройки*\n\nТекущий режим ответа: *{mode_label}*\n\nЗдесь можно менять длину ответов, язык, рассылку и управление профилем."
+        if lang == 'ru' else
+        f"⚙️ *Settings*\n\nCurrent answer mode: *{mode_label}*"
+    )
+
+async def settings_kb(user_id: int, lang: str = 'ru'):
+    mode = await get_response_mode(user_id)
+    hour = await get_notify_hour(user_id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text=("✅ Коротко" if mode == "short" else "Коротко") if lang == 'ru' else ("✅ Short" if mode == "short" else "Short"), callback_data="resp_mode_short")
+    kb.button(text=("✅ Подробно" if mode == "detailed" else "Подробно") if lang == 'ru' else ("✅ Detailed" if mode == "detailed" else "Detailed"), callback_data="resp_mode_detailed")
+    kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
+    kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
+    kb.button(text=t(lang,'btn_language'), callback_data="change_language")
+    kb.button(text=t(lang,'btn_profile'), callback_data="profile")
+    kb.button(text=t(lang,'btn_clear_profile'), callback_data="profile_clear")
+    kb.button(text=t(lang,'btn_delete_account'), callback_data="delete_account")
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    kb.adjust(2, 2, 2, 2, 1)
     return kb.as_markup()
 
 def career_menu_kb(lang: str = 'ru'):
@@ -2333,7 +2389,9 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
         await log_funnel_event(uid, "reading_started", action)
         streak, milestone = await update_streak(uid)
         profile_context = profile_prompt_context(await get_profile(uid), lang)
+        mode_context = response_mode_instruction(await get_response_mode(uid), lang)
         original_prompt = prompt
+        prompt = f"{mode_context}\n\n{prompt}"
         if profile_context:
             prompt = f"{profile_context}\n\nЗапрос:\n{prompt}"
         
@@ -2457,7 +2515,25 @@ async def cryptobot_create_invoice(user_id: int, description: str = "Mystra subs
         logger.error(f"CryptoBot create invoice error: {e}")
         return None
 
-create_cryptobot_invoice = cryptobot_create_invoice
+async def create_cryptobot_invoice(user_id: int, description: str = "Mystra subscription") -> dict | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{CRYPTOBOT_API}/createInvoice",
+                headers={"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN},
+                params={
+                    "asset": "USDT",
+                    "amount": SUBSCRIPTION_USDT,
+                    "description": description,
+                    "payload": str(user_id),
+                    "expires_in": 3600,
+                },
+            ) as r:
+                data = await r.json()
+        return data.get("result") if data.get("ok") else None
+    except Exception as e:
+        logger.error(f"CryptoBot create invoice error: {e}")
+        return None
 
 async def create_yukassa_sbp_payment(uid: int) -> dict | None:
     if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
@@ -3401,6 +3477,22 @@ async def account_menu_cb(callback: CallbackQuery):
     await safe_edit(callback, t(lang,'account_menu_title'), account_submenu_kb(lang))
     await callback.answer()
 
+@dp.callback_query(F.data == "settings_menu")
+async def settings_menu_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
+    await callback.answer()
+
+@dp.callback_query(F.data.in_({"resp_mode_short", "resp_mode_detailed"}))
+async def response_mode_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    mode = "short" if callback.data == "resp_mode_short" else "detailed"
+    await set_response_mode(uid, mode)
+    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
+    await callback.answer("Режим ответа обновлен" if lang == "ru" else "Answer mode updated")
+
 @dp.callback_query(F.data == "tarot_menu")
 async def tarot_menu_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
@@ -3547,10 +3639,10 @@ async def profile_set_timezone_cb(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "profile_clear")
 async def profile_clear_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
-    await clear_profile(callback.from_user.id)
-    p = await get_profile(callback.from_user.id)
-    await callback.message.edit_text(_profile_text(lang, p), parse_mode="Markdown", reply_markup=profile_kb(lang))
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    await clear_profile(uid)
+    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
     await callback.answer("🗑")
 
 # ─── CALLBACK: SUPPORT & REFERRAL ─────────────────────────────────────────────
@@ -4046,7 +4138,8 @@ async def followup_cb(callback: CallbackQuery):
     question = "Что мне лучше сделать дальше? Дай конкретный совет." if callback.data == "follow_advice" else "Какие сроки и ближайшая динамика у этой ситуации?"
     prompt = (f"Предыдущий расклад:\n{ctx.get('result','')}\n\n"
               f"Дополнительный вопрос пользователя: {question}\n\n"
-              "Ответь в контексте предыдущего расклада. Не повторяй весь расклад, дай только уточнение. 120-180 слов.")
+              "Ответь в контексте предыдущего расклада. Не повторяй весь расклад, дай только уточнение.\n\n"
+              f"{response_mode_instruction(await get_response_mode(uid), lang)}")
     await _do_request(uid, callback.from_user.username, "followup", callback.message.chat.id,
                       callback.message.message_id, prompt, lang,
                       "💬 *Дополнительный вопрос*" if lang == 'ru' else "💬 *Follow-up*")
@@ -4459,9 +4552,10 @@ async def handle_message(message: Message):
             prompt = (f"Предыдущий расклад:\n{ctx.get('result','')}\n\n"
                       f"Дополнительный вопрос пользователя: {text}\n\n"
                       "Ответь строго в контексте выбранной темы и предыдущего расклада. "
-                      "Не повторяй весь предыдущий ответ, дай новое уточнение. 180-260 слов.")
+                      "Не повторяй весь предыдущий ответ, дай новое уточнение.")
         else:
-            prompt = f"Глубокий премиум-разбор вопроса пользователя: {text}\n\nДай подробный структурированный ответ. 500-700 слов."
+            prompt = f"Глубокий премиум-разбор вопроса пользователя: {text}\n\nДай подробный структурированный ответ."
+        prompt = f"{prompt}\n\n{response_mode_instruction(await get_response_mode(uid), lang)}"
         header = "✨ *Глубокий разбор*" if action == "premium_deep_question" else "💬 *Дополнительный вопрос*"
         await _do_request(uid, message.from_user.username,
                           "premium_deep" if action == "premium_deep_question" else "followup",
@@ -4570,7 +4664,7 @@ async def handle_message(message: Message):
         await log_request(uid, message.from_user.username, "palmistry")
         await log_funnel_event(uid, "reading_started", "palmistry")
         streak, milestone = await update_streak(uid)
-        answer = await ask_openai_vision(image_bytes, lang)
+        answer = await ask_openai_vision(image_bytes, lang, await get_response_mode(uid))
         header = "🖐 *Хиромантическое чтение*" if lang == 'ru' else "🖐 *Palm Reading*"
         result = f"{header}\n\n{answer}"
         last_reading_contexts[uid] = {
