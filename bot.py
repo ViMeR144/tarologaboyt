@@ -167,7 +167,7 @@ TEXTS = {
         'btn_notif_on': "🔔 Включить", 'btn_notif_off': "🔕 Отключить",
         'notif_desc': "Каждое утро в *8:00* Мистра присылает карту дня.\nПодписчики получают развёрнутую интерпретацию.",
         'paywall': "🔒 *Лимит бесплатных запросов исчерпан*\n\nВы использовали все {free} бесплатных запросов.\n\n*Подписка на 30 дней — {stars} ⭐*\n• Безлимитные расклады Таро и Нумерология\n• Гороскоп, Луна, Ритуалы, Карта недели\n• Любовные расклады и многое другое",
-        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 ЮКасса (карта/ЮMoney) — 250 ₽",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 ЮKassa — все способы оплаты",
         'btn_buy_sbp': "📱 СБП — 250 ₽",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
         'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
@@ -334,7 +334,7 @@ TEXTS = {
         'btn_notif_on': "🔔 Enable", 'btn_notif_off': "🔕 Disable",
         'notif_desc': "Every morning at *8:00* Mystra sends you the card of the day.\nSubscribers get a detailed interpretation.",
         'paywall': "🔒 *Free request limit reached*\n\nYou've used all {free} free requests.\n\n*30-day Subscription — {stars} ⭐*\n• Unlimited Tarot spreads & Numerology\n• Horoscope, Moon, Rituals, Week Cards\n• Love spreads and much more",
-        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 YuKassa (card/YuMoney) — 250 ₽",
+        'btn_buy_stars': "⭐ Telegram Stars — {stars} Stars", 'btn_buy_rub': "💳 YooKassa — all payment methods",
         'btn_buy_sbp': "📱 SBP (Fast Pay) — 250 ₽",
         'btn_buy_card': "💳 Visa / Mastercard — $4.99",
         'btn_buy_crypto': "💎 Crypto (USDT/TON) — $4.99",
@@ -1959,10 +1959,9 @@ async def ask_openai(prompt: str, lang: str = 'ru') -> str:
         logger.error("OPENAI_API_KEY is not set")
         return t(lang, 'error')
     try:
-        prompt_text = f"{prompt_text}\n{response_mode_instruction(mode, lang)}"
         response = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
-            max_completion_tokens=1024,
+            max_completion_tokens=2200,
             messages=[
                 {"role": "developer", "content": SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])},
                 {"role": "user", "content": prompt},
@@ -1981,7 +1980,7 @@ async def ask_openai_stream(prompt: str, lang: str = 'ru'):
     try:
         stream = await openai_client.chat.completions.create(
             model=OPENAI_MODEL,
-            max_completion_tokens=1500,
+            max_completion_tokens=3200,
             stream=True,
             messages=[
                 {"role": "developer", "content": SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS['ru'])},
@@ -2097,6 +2096,17 @@ def back_button(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_main_menu'), callback_data="back_main")
     return kb.as_markup()
 
+INPUT_BACK_TARGETS: dict[str, str] = {
+    "profile_birthdate": "profile",
+    "profile_name": "profile",
+    "profile_city": "profile",
+    "profile_timezone": "profile",
+    "promo_input": "account_menu",
+    "tarot_library": "account_menu",
+    "card_year": "back_main",
+    "notifications": "settings_menu",
+}
+
 # maps action → parent menu to return to after a result
 ACTION_BACK: dict[str, str] = {
     # Taро → меню таро
@@ -2155,6 +2165,17 @@ def result_keyboard(lang: str, back_to: str = "back_main", with_followups: bool 
     else:
         kb.adjust(1)
     return kb.as_markup()
+
+def resolve_back_target(action: str = "") -> str:
+    if not action:
+        return "back_main"
+    if action in INPUT_BACK_TARGETS:
+        return INPUT_BACK_TARGETS[action]
+    if action.startswith("horoscope"):
+        return "esoterics_menu"
+    if action == "followup":
+        return "readings_menu"
+    return ACTION_BACK.get(action, "back_main")
 
 def cancel_keyboard(lang: str = 'ru'):
     kb = InlineKeyboardBuilder()
@@ -2240,7 +2261,7 @@ def profile_kb(lang: str = 'ru'):
     kb.button(text=t(lang,'btn_set_city'), callback_data="profile_set_city")
     kb.button(text=t(lang,'btn_set_timezone'), callback_data="profile_set_timezone")
     kb.button(text=t(lang,'btn_history'), callback_data="history_view")
-    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    kb.button(text=t(lang,'btn_back'), callback_data="settings_menu")
     kb.adjust(2, 2, 2, 1, 1)
     return kb.as_markup()
 
@@ -2267,7 +2288,7 @@ async def settings_kb(user_id: int, lang: str = 'ru'):
     kb.button(text=t(lang,'btn_profile'), callback_data="profile")
     kb.button(text=t(lang,'btn_clear_profile'), callback_data="profile_clear")
     kb.button(text=t(lang,'btn_delete_account'), callback_data="delete_account")
-    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    kb.button(text=t(lang,'btn_back'), callback_data="settings_menu")
     kb.adjust(2, 2, 2, 2, 1)
     return kb.as_markup()
 
@@ -2299,35 +2320,27 @@ def smart_paywall_text(lang: str, action: str = "") -> str:
                 f"*Подписка на 30 дней — {SUBSCRIPTION_STARS} ⭐*")
     return t(lang, 'paywall', free=FREE_REQUESTS, stars=SUBSCRIPTION_STARS)
 
-def paywall_keyboard(lang: str = 'ru'):
+def paywall_keyboard(lang: str = 'ru', back_to: str = "back_main"):
     kb = InlineKeyboardBuilder()
     kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
     kb.button(text=f"✨ Разовый глубокий разбор — {PREMIUM_READING_STARS} Stars" if lang == 'ru' else f"✨ One deep reading — {PREMIUM_READING_STARS} Stars", callback_data="premium_deep")
-    if YUKASSA_SHOP_ID:
-        kb.button(text=t(lang,'btn_buy_sbp'), callback_data="buy_sbp")
     kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
-    if STRIPE_TOKEN:
-        kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
     if CRYPTOBOT_TOKEN:
         kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
-    kb.button(text=t(lang,'btn_main_menu'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_back') if back_to != "back_main" else t(lang,'btn_main_menu'), callback_data=back_to)
     kb.adjust(1)
     return kb.as_markup()
 
-def subscription_keyboard(has_sub: bool, lang: str = 'ru'):
+def subscription_keyboard(has_sub: bool, lang: str = 'ru', back_to: str = "account_menu"):
     kb = InlineKeyboardBuilder()
     if not has_sub:
         kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
-        if YUKASSA_SHOP_ID:
-            kb.button(text=t(lang,'btn_buy_sbp'), callback_data="buy_sbp")
         kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
-        if STRIPE_TOKEN:
-            kb.button(text=t(lang,'btn_buy_card'), callback_data="buy_card")
         if CRYPTOBOT_TOKEN:
             kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
     else:
         kb.button(text=t(lang,'btn_refund'), callback_data="refund_request")
-    kb.button(text=t(lang,'btn_back'), callback_data="back_main")
+    kb.button(text=t(lang,'btn_back') if back_to != "back_main" else t(lang,'btn_main_menu'), callback_data=back_to)
     kb.adjust(1)
     return kb.as_markup()
 
@@ -2345,26 +2358,97 @@ async def safe_edit(callback: CallbackQuery, text: str, markup=None, parse_mode:
         await bot.send_message(callback.message.chat.id, text,
                                parse_mode=parse_mode, reply_markup=markup)
 
+async def navigate_to(callback: CallbackQuery, target: str, lang: str | None = None):
+    lang = lang or await get_user_lang(callback.from_user.id)
+    if target == "back_main":
+        await safe_edit(callback, t(lang, 'main_menu_title'), main_menu(lang))
+    elif target == "readings_menu":
+        await safe_edit(callback, t(lang, 'readings_menu_title'), readings_submenu_kb(lang))
+    elif target == "esoterics_menu":
+        await safe_edit(callback, t(lang, 'esoterics_menu_title'), esoterics_submenu_kb(lang))
+    elif target == "account_menu":
+        await safe_edit(callback, t(lang, 'account_menu_title'), account_submenu_kb(lang))
+    elif target == "settings_menu":
+        await safe_edit(callback, await settings_title_text(callback.from_user.id, lang), await settings_kb(callback.from_user.id, lang))
+    elif target == "tarot_menu":
+        await safe_edit(callback, t(lang, 'tarot_menu_title'), tarot_menu_kb(lang))
+    elif target == "love_menu":
+        await safe_edit(callback, t(lang, 'love_menu_title'), love_menu_kb(lang))
+    elif target == "career_menu":
+        await safe_edit(callback, t(lang, 'career_menu_title'), career_menu_kb(lang))
+    elif target == "rune_menu":
+        await safe_edit(callback, t(lang, 'rune_menu_title'), rune_menu_kb(lang))
+    elif target == "numerology_menu":
+        await safe_edit(callback, t(lang, 'num_menu_title'), numerology_menu_kb(lang))
+    elif target == "num_page_2":
+        await safe_edit(callback, t(lang, 'num_menu_title'), numerology_menu_kb_p2(lang))
+    elif target == "profile":
+        await safe_edit(callback, _profile_text(lang, await get_profile(callback.from_user.id)), profile_kb(lang))
+    elif target == "notifications":
+        enabled = await get_notifications_status(callback.from_user.id)
+        hour = await get_notify_hour(callback.from_user.id)
+        kb = InlineKeyboardBuilder()
+        kb.button(text=t(lang,'btn_notif_off' if enabled else 'btn_notif_on'), callback_data="notif_off" if enabled else "notif_on")
+        kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
+        kb.button(text=t(lang,'btn_back'), callback_data="settings_menu")
+        kb.adjust(1)
+        status = t(lang,'notif_enabled' if enabled else 'notif_disabled')
+        await safe_edit(callback, t(lang,'notif_status',status=status,desc=t(lang,'notif_desc')), kb.as_markup())
+    else:
+        await safe_edit(callback, t(lang, 'main_menu_title'), main_menu(lang))
+
 async def _set_input_state(callback: CallbackQuery, action: str, prompt_key: str, lang: str):
     user_states[callback.from_user.id] = {
         "action": action, "prompt_msg_id": callback.message.message_id,
         "chat_id": callback.message.chat.id,
+        "back_to": resolve_back_target(action),
     }
     await safe_edit(callback, t(lang, prompt_key), cancel_keyboard(lang))
     await callback.answer()
 
 async def _edit_or_send(chat_id: int, msg_id, text: str, markup):
+    max_len = 3900
+    chunks = []
+    remaining = text or ""
+    while remaining:
+        if len(remaining) <= max_len:
+            chunks.append(remaining)
+            break
+        split_at = remaining.rfind("\n\n", 0, max_len)
+        if split_at < 1000:
+            split_at = remaining.rfind("\n", 0, max_len)
+        if split_at < 500:
+            split_at = max_len
+        chunks.append(remaining[:split_at].rstrip())
+        remaining = remaining[split_at:].lstrip()
+    if not chunks:
+        chunks = [text]
+
+    first_chunk = chunks[0]
+    used_existing_message = False
     if msg_id:
         try:
-            await bot.edit_message_text(text, chat_id=chat_id, message_id=msg_id, parse_mode="Markdown", reply_markup=markup)
-            return
+            await bot.edit_message_text(first_chunk, chat_id=chat_id, message_id=msg_id, parse_mode="Markdown")
+            used_existing_message = True
         except Exception:
-            pass
-    await bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
+            await bot.send_message(chat_id, first_chunk, parse_mode="Markdown")
+    else:
+        await bot.send_message(chat_id, first_chunk, parse_mode="Markdown")
+
+    for chunk in chunks[1:-1]:
+        await bot.send_message(chat_id, chunk, parse_mode="Markdown")
+
+    if len(chunks) > 1:
+        await bot.send_message(chat_id, chunks[-1], parse_mode="Markdown", reply_markup=markup)
+    elif used_existing_message:
+        try:
+            await bot.edit_message_reply_markup(chat_id=chat_id, message_id=msg_id, reply_markup=markup)
+        except Exception:
+            await bot.send_message(chat_id, first_chunk, parse_mode="Markdown", reply_markup=markup)
 
 async def show_paywall(callback: CallbackQuery, lang: str, action: str = ""):
     await log_funnel_event(callback.from_user.id, "paywall_shown", action)
-    await safe_edit(callback, smart_paywall_text(lang, action), paywall_keyboard(lang))
+    await safe_edit(callback, smart_paywall_text(lang, action), paywall_keyboard(lang, resolve_back_target(action)))
 
 processing_users = set()
 
@@ -2535,31 +2619,36 @@ async def create_cryptobot_invoice(user_id: int, description: str = "Mystra subs
         logger.error(f"CryptoBot create invoice error: {e}")
         return None
 
-async def create_yukassa_sbp_payment(uid: int) -> dict | None:
+async def create_yukassa_payment(uid: int, payment_method_type: str | None = None,
+                                 amount: str = "250.00", description: str = "Mystra subscription for 30 days") -> dict | None:
     if not YUKASSA_SHOP_ID or not YUKASSA_SECRET_KEY:
         return None
     return_url = f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "https://t.me/"
     auth = aiohttp.BasicAuth(YUKASSA_SHOP_ID, YUKASSA_SECRET_KEY)
     headers = {"Idempotency-Key": str(uuid.uuid4()), "Content-Type": "application/json"}
     payload = {
-        "amount": {"value": "250.00", "currency": "RUB"},
-        "payment_method_data": {"type": "sbp"},
+        "amount": {"value": amount, "currency": "RUB"},
         "confirmation": {"type": "redirect", "return_url": return_url},
         "capture": True,
-        "description": "Подписка Мистра на 30 дней",
+        "description": description,
         "metadata": {"user_id": str(uid)}
     }
+    if payment_method_type:
+        payload["payment_method_data"] = {"type": payment_method_type}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post("https://api.yookassa.ru/v3/payments",
                                     json=payload, auth=auth, headers=headers) as resp:
                 data = await resp.json()
                 if "id" not in data:
-                    logger.error(f"YuKassa SBP error response: {data}")
+                    logger.error(f"YuKassa create payment error response: {data}")
                 return data
     except Exception as e:
-        logger.error(f"YuKassa SBP create error: {e}")
+        logger.error(f"YuKassa create payment error: {e}")
         return None
+
+async def create_yukassa_sbp_payment(uid: int) -> dict | None:
+    return await create_yukassa_payment(uid, payment_method_type="sbp")
 
 async def check_yukassa_payments():
     while True:
@@ -2586,11 +2675,11 @@ async def check_yukassa_payments():
                             async with aiosqlite.connect(DB_PATH) as db:
                                 await db.execute(
                                     "INSERT OR IGNORE INTO payments (payment_id, user_id, method, amount, currency) VALUES (?,?,?,?,?)",
-                                    (payment_id, user_id, "sbp", "250.00", "RUB"))
+                                    (payment_id, user_id, "yookassa", "250.00", "RUB"))
                                 await db.commit()
                             lang = await get_user_lang(user_id)
                             expiry = await grant_subscription(user_id, 30)
-                            await log_funnel_event(user_id, "payment_success", "sbp_subscription")
+                            await log_funnel_event(user_id, "payment_success", "yookassa_subscription")
                             await bot.send_message(user_id,
                                 t(lang, 'sub_activated', date=expiry.strftime('%d.%m.%Y')),
                                 parse_mode="Markdown", reply_markup=main_menu(lang))
@@ -3454,9 +3543,9 @@ async def back_main(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "cancel_input")
 async def cancel_input_cb(callback: CallbackQuery):
-    user_states.pop(callback.from_user.id, None)
+    state = user_states.pop(callback.from_user.id, {})
     lang = await get_user_lang(callback.from_user.id)
-    await safe_edit(callback, t(lang,'main_menu_title'), main_menu(lang))
+    await navigate_to(callback, state.get("back_to", "back_main"), lang)
     await callback.answer()
 
 @dp.callback_query(F.data == "readings_menu")
@@ -3977,7 +4066,7 @@ async def subscription_cb(callback: CallbackQuery):
         bonus = await get_bonus_requests(uid)
         remaining = max(0, FREE_REQUESTS + bonus - count)
         text = t(lang,'sub_inactive', remaining=remaining, free=FREE_REQUESTS+bonus, stars=SUBSCRIPTION_STARS, streak=streak)
-    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=subscription_keyboard(has_sub, lang))
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=subscription_keyboard(has_sub, lang, "account_menu"))
     await callback.answer()
 
 @dp.callback_query(F.data == "buy_stars")
@@ -3991,25 +4080,13 @@ async def buy_stars_cb(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "buy_rub")
 async def buy_rub_cb(callback: CallbackQuery):
-    lang = await get_user_lang(callback.from_user.id)
-    await log_funnel_event(callback.from_user.id, "buy_clicked", "rub_subscription")
-    if not YUKASSA_TOKEN:
-        await callback.answer("⏳ Оплата картой скоро будет доступна!", show_alert=True); return
-    await bot.send_invoice(chat_id=callback.from_user.id, title=t(lang,'invoice_title'),
-                           description=t(lang,'invoice_desc'), payload="sub_30d_rub",
-                           provider_token=YUKASSA_TOKEN, currency="RUB",
-                           prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_RUB)])
-    await callback.answer()
-
-@dp.callback_query(F.data == "buy_sbp")
-async def buy_sbp_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
-    await log_funnel_event(uid, "buy_clicked", "sbp_subscription")
+    await log_funnel_event(uid, "buy_clicked", "yookassa_subscription")
     if not YUKASSA_SHOP_ID:
-        await callback.answer("⏳ СБП пока недоступен!", show_alert=True); return
+        await callback.answer(t(lang,'payment_unavail'), show_alert=True); return
     await callback.answer()
-    payment = await create_yukassa_sbp_payment(uid)
+    payment = await create_yukassa_payment(uid)
     if not payment or "id" not in payment:
         await callback.message.answer(t(lang, 'sbp_error'), parse_mode="Markdown"); return
     payment_id = payment["id"]
@@ -4021,11 +4098,17 @@ async def buy_sbp_cb(callback: CallbackQuery):
                          (payment_id, uid))
         await db.commit()
     kb = InlineKeyboardBuilder()
-    kb.button(text=t(lang, 'sbp_btn_pay'), url=confirm_url)
-    kb.button(text=t(lang, 'btn_main_menu'), callback_data="back_main")
+    kb.button(text="YooKassa - all payment methods", url=confirm_url)
+    kb.button(text=t(lang, 'btn_back'), callback_data="subscription")
     kb.adjust(1)
-    await callback.message.answer(t(lang, 'sbp_payment_msg'),
-                                  parse_mode="Markdown", reply_markup=kb.as_markup())
+    pay_text = (
+        "*YooKassa payment*\n\nOpen the payment page and choose any available method: bank card, YooMoney, SBP, or any other enabled option.\n\nYour subscription will activate automatically after successful payment."
+    )
+    await callback.message.answer(pay_text, parse_mode="Markdown", reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data == "buy_sbp")
+async def buy_sbp_cb(callback: CallbackQuery):
+    await buy_rub_cb(callback)
 
 @dp.callback_query(F.data == "buy_crypto")
 async def buy_crypto_cb(callback: CallbackQuery):
@@ -4545,7 +4628,7 @@ async def handle_message(message: Message):
             return
         if action == "followup_question" and not await can_use_bot(uid):
             await bot.send_message(chat_id, smart_paywall_text(lang, ctx.get("action", "followup")),
-                                   parse_mode="Markdown", reply_markup=paywall_keyboard(lang))
+                                   parse_mode="Markdown", reply_markup=paywall_keyboard(lang, resolve_back_target(ctx.get("action", "followup"))))
             await log_funnel_event(uid, "paywall_shown", "followup")
             return
         if ctx:
@@ -4645,7 +4728,7 @@ async def handle_message(message: Message):
             await log_funnel_event(uid, "paywall_shown", "palmistry")
             await _edit_or_send(chat_id, prompt_msg_id,
                                 smart_paywall_text(lang, "palmistry"),
-                                paywall_keyboard(lang))
+                                paywall_keyboard(lang, resolve_back_target("palmistry")))
             return
         if prompt_msg_id:
             try:
@@ -4723,7 +4806,7 @@ async def handle_message(message: Message):
         await log_funnel_event(uid, "paywall_shown", action)
         await _edit_or_send(chat_id, prompt_msg_id,
                             smart_paywall_text(lang, action),
-                            paywall_keyboard(lang))
+                            paywall_keyboard(lang, resolve_back_target(action)))
         return
 
     # Build prompt and header based on action
@@ -4814,7 +4897,11 @@ async def handle_message(message: Message):
         pos = ["Суть","Перекрёст","Корона","Основа","Прошлое","Будущее","Ты сам","Окружение","Надежды","Итог"]
         cards_text = "\n".join([f"• {p}: {c}" for p,c in zip(pos,cards)])
         header_text = "\n".join([f"*{p}:* {c}" for p,c in zip(pos,cards)])
-        prompt = f"Ситуация: «{text}»\n\nКельтский крест:\n{cards_text}\n\nДай детальную интерпретацию каждой позиции. 500–700 слов."
+        prompt = (
+            f"Ситуация: «{text}»\n\nКельтский крест:\n{cards_text}\n\n"
+            "Дай полную интерпретацию всех 10 позиций по очереди. "
+            "Обязательно дойди до карты 10 и закончи общим итогом по ситуации."
+        )
         header = f"✡️ *Кельтский крест*\n\n*Ситуация:* {text}\n\n{header_text}"
     elif action == "tarot_yn_question":
         card = random.choice(TAROT_CARDS)
