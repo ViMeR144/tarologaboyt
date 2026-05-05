@@ -1439,7 +1439,8 @@ async def init_db():
                     "timezone TEXT DEFAULT NULL","result TEXT DEFAULT NULL",
                     "terms_accepted INTEGER DEFAULT 0","response_mode TEXT DEFAULT 'detailed'",
                     "notify_hour INTEGER DEFAULT 8","tone_style TEXT DEFAULT 'balanced'",
-                    "astro_tarot INTEGER DEFAULT 1","subscription_tier TEXT DEFAULT 'standard'"]:
+                    "astro_tarot INTEGER DEFAULT 1","subscription_tier TEXT DEFAULT 'standard'",
+                    "ab_variant TEXT DEFAULT NULL","referral_paid_count INTEGER DEFAULT 0"]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
@@ -1564,6 +1565,57 @@ async def get_referral_count(user_id: int) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by=?", (user_id,)) as c:
             return (await c.fetchone())[0]
+
+async def get_referral_paid_count(user_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COALESCE(referral_paid_count,0) FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+    return row[0] if row else 0
+
+async def get_ab_variant(user_id: int) -> str:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COALESCE(ab_variant,'A') FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+    return row[0] if row else 'A'
+
+async def maybe_reward_referrer(paid_uid: int, method: str):
+    """Если пользователь пришёл по реферальной ссылке — даём рефереру 7 дней подписки."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT referred_by FROM users WHERE user_id=?", (paid_uid,)) as c:
+            row = await c.fetchone()
+    if not row or not row[0]:
+        return
+    referrer_id = row[0]
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT referral_paid_count FROM users WHERE user_id=?", (referrer_id,)) as c:
+            rrow = await c.fetchone()
+    paid_count = rrow[0] if rrow else 0
+    expiry = await activate_subscription(referrer_id, 7, "standard")
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET referral_paid_count=COALESCE(referral_paid_count,0)+1 WHERE user_id=?",
+            (referrer_id,))
+        await db.commit()
+    rl = await get_user_lang(referrer_id)
+    total_paid = paid_count + 1
+    msg = (
+        f"🎉 *Реферальный бонус!*\n\n"
+        f"Ваш приглашённый друг оплатил подписку ({method}).\n"
+        f"Вы получаете *+7 дней* подписки бесплатно!\n"
+        f"📅 Ваша подписка действует до: *{expiry.strftime('%d.%m.%Y')}*\n\n"
+        f"_Всего приглашённых оплативших: {total_paid}_"
+    ) if rl == "ru" else (
+        f"🎉 *Referral Bonus!*\n\n"
+        f"Your invited friend paid for a subscription ({method}).\n"
+        f"You get *+7 days* of subscription for free!\n"
+        f"📅 Your subscription valid until: *{expiry.strftime('%d.%m.%Y')}*\n\n"
+        f"_Total paying referrals: {total_paid}_"
+    )
+    try:
+        await bot.send_message(referrer_id, msg, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"maybe_reward_referrer: send_message to {referrer_id} failed: {e}")
 
 async def get_profile(user_id: int) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -2520,9 +2572,44 @@ def career_menu_kb(lang: str = 'ru'):
     kb.adjust(1)
     return kb.as_markup()
 
-def smart_paywall_text(lang: str, action: str = "") -> str:
+_PAYWALL_B = {
+    "default": (
+        "🔮 *Ваши 5 бесплатных раскладов использованы*\n\n"
+        "Мистра уже видит вас — и готова работать с вами глубже.\n\n"
+        f"*Подписка · {SUBSCRIPTION_STARS} ⭐ · 30 дней*\n"
+        "• Безлимитные расклады 24/7\n"
+        "• Любовь, карьера, нумерология, руны — всё включено\n"
+        "• Карта дня и рассылка каждое утро\n\n"
+        "_Тысячи людей уже получают ответы каждый день._"
+    ),
+    "love": (
+        "❤️ *Любовный вопрос требует глубины*\n\n"
+        "Один расклад показывает момент. Подписка — динамику отношений.\n\n"
+        f"*Подписка · {SUBSCRIPTION_STARS} ⭐ · 30 дней*\n"
+        "• Неограниченные любовные расклады\n"
+        "• Совместимость, чувства партнёра, прогноз\n"
+        "• Уточняющие вопросы после каждого ответа"
+    ),
+    "career": (
+        "💼 *Деньги любят точность*\n\n"
+        "Карьерные расклады работают лучше в серии — видна динамика и риски.\n\n"
+        f"*Подписка · {SUBSCRIPTION_STARS} ⭐ · 30 дней*\n"
+        "• Карьера, бизнес, финансы — без лимита\n"
+        "• Конкретные сроки и рекомендации\n"
+        "• Ежедневный прогноз"
+    ),
+}
+
+def smart_paywall_text(lang: str, action: str = "", ab: str = 'A') -> str:
     if lang != 'ru':
         return t(lang, 'paywall', free=FREE_REQUESTS, stars=SUBSCRIPTION_STARS)
+    if ab == 'B':
+        if action.startswith("love"):
+            return _PAYWALL_B["love"]
+        if action.startswith("career"):
+            return _PAYWALL_B["career"]
+        return _PAYWALL_B["default"]
+    # Вариант A — оригинальный
     if action.startswith("love"):
         return (f"🔒 *Лимит бесплатных запросов исчерпан*\n\n"
                 f"В любовных раскладах часто важны уточнения: чувства, сроки и следующий шаг.\n\n"
@@ -2668,8 +2755,10 @@ async def _edit_or_send(chat_id: int, msg_id, text: str, markup):
             await bot.send_message(chat_id, first_chunk, parse_mode="Markdown", reply_markup=markup)
 
 async def show_paywall(callback: CallbackQuery, lang: str, action: str = ""):
-    await log_funnel_event(callback.from_user.id, "paywall_shown", action)
-    await safe_edit(callback, smart_paywall_text(lang, action), paywall_keyboard(lang, resolve_back_target(action)))
+    uid = callback.from_user.id
+    ab = await get_ab_variant(uid)
+    await log_funnel_event(uid, f"paywall_shown_{ab}", action)
+    await safe_edit(callback, smart_paywall_text(lang, action, ab), paywall_keyboard(lang, resolve_back_target(action)))
 
 processing_users = set()
 
@@ -3030,7 +3119,8 @@ async def cmd_start(message: Message):
         is_new = existing is None
         already_referred = existing and existing[1] is not None
         if is_new:
-            await db.execute("INSERT INTO users (user_id,username,notifications,referred_by) VALUES (?,?,1,?)", (uid, username, referrer_id))
+            ab = 'A' if random.random() < 0.5 else 'B'
+            await db.execute("INSERT INTO users (user_id,username,notifications,referred_by,ab_variant) VALUES (?,?,1,?,?)", (uid, username, referrer_id, ab))
         else:
             await db.execute("UPDATE users SET username=? WHERE user_id=?", (username, uid))
         if is_new and referrer_id and not already_referred:
@@ -3139,8 +3229,10 @@ async def show_admin_menu(message_or_callback):
     kb.button(text="📈 Воронка", callback_data="adm_funnel")
     kb.button(text="🏆 Топ юзеров", callback_data="adm_top")
     kb.button(text="📈 Популярность", callback_data="adm_popular")
+    kb.button(text="👥 Рефералы", callback_data="adm_referrals")
+    kb.button(text="🧪 A/B тест", callback_data="adm_ab")
     kb.button(text="📥 Экспорт CSV", callback_data="adm_export")
-    kb.adjust(2, 2, 2, 2, 2, 1)
+    kb.adjust(2, 2, 2, 2, 2, 2, 1)
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     else:
@@ -3471,6 +3563,90 @@ async def adm_popular_cb(callback: CallbackQuery):
     kb.adjust(2)
     await safe_edit(callback, text, markup=kb.as_markup())
     await callback.answer()
+
+@dp.callback_query(F.data == "adm_referrals")
+async def adm_referrals_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by IS NOT NULL") as c:
+            total_refs = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM users WHERE referred_by IS NOT NULL AND referral_paid_count > 0") as c:
+            paid_refs = (await c.fetchone())[0]
+        async with db.execute("SELECT SUM(referral_paid_count) FROM users") as c:
+            total_payouts = (await c.fetchone())[0] or 0
+        async with db.execute(
+            "SELECT u.username, u.user_id, COUNT(r.user_id) as cnt, u.referral_paid_count "
+            "FROM users u JOIN users r ON r.referred_by=u.user_id "
+            "GROUP BY u.user_id ORDER BY cnt DESC LIMIT 10") as c:
+            top = await c.fetchall()
+    conv = round(paid_refs / total_refs * 100, 1) if total_refs else 0
+    text = (
+        f"👥 *Реферальная статистика*\n\n"
+        f"📊 Всего пришло по реферальным ссылкам: *{total_refs}*\n"
+        f"💰 Из них оплатили подписку: *{paid_refs}* ({conv}%)\n"
+        f"🎁 Всего выплачено реферальных бонусов: *{total_payouts} × 7 дней*\n\n"
+        f"🏆 *Топ рефереров:*\n"
+    )
+    for uname, uid, cnt, paid_cnt in top:
+        label = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
+        text += f"• {label} — {cnt} приглашённых, {paid_cnt} оплативших\n"
+    if not top:
+        text += "• пока нет данных\n"
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Обновить", callback_data="adm_referrals")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(2)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "adm_ab")
+async def adm_ab_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT ab_variant, COUNT(*) FROM users WHERE ab_variant IS NOT NULL GROUP BY ab_variant") as c:
+            variants = dict(await c.fetchall())
+        async with db.execute(
+            "SELECT context, COUNT(*) FROM funnel_events WHERE event LIKE 'paywall_shown_%' GROUP BY context") as c:
+            shown_raw = await c.fetchall()
+        async with db.execute(
+            "SELECT event, COUNT(*) FROM funnel_events WHERE event LIKE 'payment_success_%' GROUP BY event") as c:
+            paid_raw = await c.fetchall()
+
+    shown_a = sum(cnt for _, cnt in shown_raw)
+    shown_b = sum(cnt for _, cnt in shown_raw)
+    # Считаем по событию paywall_shown_A / paywall_shown_B
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM funnel_events WHERE event='paywall_shown_A'") as c:
+            shown_a = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM funnel_events WHERE event='paywall_shown_B'") as c:
+            shown_b = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM funnel_events WHERE event='payment_success_A'") as c:
+            paid_a = (await c.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM funnel_events WHERE event='payment_success_B'") as c:
+            paid_b = (await c.fetchone())[0]
+
+    conv_a = round(paid_a / shown_a * 100, 1) if shown_a else 0
+    conv_b = round(paid_b / shown_b * 100, 1) if shown_b else 0
+    winner = "A ✅" if conv_a >= conv_b else "B ✅"
+    text = (
+        f"🧪 *A/B тест пейвола*\n\n"
+        f"👥 Пользователей: A={variants.get('A',0)}, B={variants.get('B',0)}\n\n"
+        f"*Вариант A* (оригинал):\n"
+        f"• Показов пейвола: *{shown_a}*\n"
+        f"• Оплат: *{paid_a}* | Конверсия: *{conv_a}%*\n\n"
+        f"*Вариант B* (новый текст):\n"
+        f"• Показов пейвола: *{shown_b}*\n"
+        f"• Оплат: *{paid_b}* | Конверсия: *{conv_b}%*\n\n"
+        f"🏆 Лучший вариант: *{winner}*"
+    )
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Обновить", callback_data="adm_ab")
+    kb.button(text="🏠 Меню", callback_data="adm_main")
+    kb.adjust(2)
+    await safe_edit(callback, text, markup=kb.as_markup())
+    await callback.answer()
+
 
 @dp.callback_query(F.data == "adm_export")
 async def adm_export_cb(callback: CallbackQuery):
@@ -4012,6 +4188,7 @@ async def referral_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     ref_count = await get_referral_count(uid)
+    paid_count = await get_referral_paid_count(uid)
     bonus = await get_bonus_requests(uid)
     bot_info = await bot.get_me()
     link = f"https://t.me/{bot_info.username}?start=ref_{uid}"
@@ -4020,7 +4197,13 @@ async def referral_cb(callback: CallbackQuery):
     kb.button(text=t(lang,'btn_share_referral'), url=share_url)
     kb.button(text=t(lang,'btn_back'), callback_data="back_main")
     kb.adjust(1)
-    await callback.message.edit_text(t(lang,'referral_text',link=link,count=ref_count,bonus=bonus), parse_mode="Markdown", reply_markup=kb.as_markup())
+    base_text = t(lang,'referral_text',link=link,count=ref_count,bonus=bonus)
+    if paid_count > 0:
+        paid_line = (f"\n💰 Оплатили подписку: *{paid_count}* → вы получили *+{paid_count*7} дней* бесплатно"
+                     if lang == "ru" else
+                     f"\n💰 Paid subscribers: *{paid_count}* → you earned *+{paid_count*7} free days*")
+        base_text += paid_line
+    await callback.message.edit_text(base_text, parse_mode="Markdown", reply_markup=kb.as_markup())
     await callback.answer()
 
 # ─── CALLBACK: MY STATS / PAYMENTS / DELETE / NOTIFY TIME ────────────────────
@@ -4606,18 +4789,21 @@ async def successful_payment_handler(message: Message):
     else:
         expiry = await activate_subscription(uid, 30, "standard")
         await log_funnel_event(uid, "payment_success", payload)
+        ab = await get_ab_variant(uid)
+        await log_funnel_event(uid, f"payment_success_{ab}", payload)
         await message.answer(t(lang,'sub_activated',date=expiry.strftime('%d.%m.%Y')),
                              parse_mode="Markdown", reply_markup=main_menu(lang))
+        method_label = {"sub_30d_rub": "💳 ЮКасса", "sub_30d_stars": "⭐ Stars",
+                        "sub_30d_card": "💳 Stripe", "sub_30d_crypto": "💎 Crypto"}.get(payload, payload)
         if ADMIN_ID:
-            method = {"sub_30d_rub": "💳 ЮКасса", "sub_30d_stars": "⭐ Stars",
-                      "sub_30d_card": "💳 Stripe", "sub_30d_crypto": "💎 Crypto"}.get(payload, payload)
             await bot.send_message(ADMIN_ID,
                 f"💰 *Новая оплата!*\n"
                 f"👤 {uname} (`{uid}`)\n"
-                f"💳 Способ: {method}\n"
+                f"💳 Способ: {method_label}\n"
                 f"💵 Сумма: {amount_str}\n"
                 f"📅 Подписка до: {expiry.strftime('%d.%m.%Y')}",
                 parse_mode="Markdown")
+        await maybe_reward_referrer(uid, method_label)
 
 # ─── CALLBACKS: NEW FEATURES ──────────────────────────────────────────────────
 @dp.callback_query(F.data == "tarot_cc")
@@ -5413,6 +5599,7 @@ async def _handle_yookassa_webhook(request: aiohttp.web.Request) -> aiohttp.web.
             lang = await get_user_lang(user_id)
             expiry = await activate_subscription(user_id, 30, "standard")
             await log_funnel_event(user_id, "payment_success", "yookassa_webhook")
+            await maybe_reward_referrer(user_id, "💳 ЮКасса")
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute(
                     "DELETE FROM yookassa_invoices WHERE payment_id=?", (payment_id,)
