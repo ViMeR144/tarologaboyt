@@ -41,8 +41,17 @@ WELCOME_PHOTO = os.getenv("WELCOME_PHOTO", "")
 SITE_URL = os.getenv("SITE_URL", "").strip().rstrip("/")
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "support")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "")
+YOOKASSA_WEBHOOK_PATH = os.getenv("YOOKASSA_WEBHOOK_PATH", "/yookassa/webhook")
+PORT = int(os.getenv("PORT", "8080"))
 
 SUBSCRIPTION_STARS = 100
+VIP_SUBSCRIPTION_STARS = 1299
+PREMIUM_PRODUCT_PRICES = {
+    "love_plus": 249,
+    "month_forecast": 299,
+    "money_focus": 249,
+    "compatibility_plus": 349,
+}
 SUBSCRIPTION_RUB = 25000
 SUBSCRIPTION_USD = 300  # cents ($4.99)
 SUBSCRIPTION_USDT = "3.00"
@@ -1417,6 +1426,10 @@ async def init_db():
             kind TEXT, used INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),
             used_at TEXT DEFAULT NULL)""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS auto_series_progress (
+            user_id INTEGER, stage TEXT,
+            sent_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, stage))""")
         for col in ["notifications INTEGER DEFAULT 1","language TEXT DEFAULT NULL",
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
                     "birth_date TEXT DEFAULT NULL","full_name TEXT DEFAULT NULL",
@@ -1425,12 +1438,13 @@ async def init_db():
                     "gender TEXT DEFAULT NULL","city TEXT DEFAULT NULL",
                     "timezone TEXT DEFAULT NULL","result TEXT DEFAULT NULL",
                     "terms_accepted INTEGER DEFAULT 0","response_mode TEXT DEFAULT 'detailed'",
-                    "notify_hour INTEGER DEFAULT 8"]:
+                    "notify_hour INTEGER DEFAULT 8","tone_style TEXT DEFAULT 'balanced'",
+                    "astro_tarot INTEGER DEFAULT 1","subscription_tier TEXT DEFAULT 'standard'"]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col}")
             except Exception:
                 pass
-        for hist_col in ["result TEXT DEFAULT NULL"]:
+        for hist_col in ["result TEXT DEFAULT NULL","outcome_status TEXT DEFAULT NULL","outcome_note TEXT DEFAULT NULL"]:
             try:
                 await db.execute(f"ALTER TABLE readings_history ADD COLUMN {hist_col}")
             except Exception:
@@ -1554,7 +1568,7 @@ async def get_referral_count(user_id: int) -> int:
 async def get_profile(user_id: int) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT birth_date,full_name,zodiac,streak,COALESCE(bonus_requests,0),gender,city,timezone FROM users WHERE user_id=?",
+            "SELECT birth_date,full_name,zodiac,streak,COALESCE(bonus_requests,0),gender,city,timezone,COALESCE(astro_tarot,1),COALESCE(subscription_tier,'standard') FROM users WHERE user_id=?",
             (user_id,)
         ) as c:
             row = await c.fetchone()
@@ -1562,7 +1576,8 @@ async def get_profile(user_id: int) -> dict:
                 return {}
             return {"birth_date": row[0], "full_name": row[1], "zodiac": row[2],
                     "streak": row[3] or 0, "bonus": row[4],
-                    "gender": row[5], "city": row[6], "timezone": row[7]}
+                    "gender": row[5], "city": row[6], "timezone": row[7],
+                    "astro_tarot": bool(row[8]), "subscription_tier": row[9] or "standard"}
 
 async def get_response_mode(user_id: int) -> str:
     async with aiosqlite.connect(DB_PATH) as db:
@@ -1578,6 +1593,51 @@ async def set_response_mode(user_id: int, mode: str):
         await db.execute("UPDATE users SET response_mode=? WHERE user_id=?", (mode, user_id))
         await db.commit()
 
+async def get_tone_style(user_id: int) -> str:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COALESCE(tone_style,'balanced') FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+            style = row[0] if row else "balanced"
+    return style if style in {"soft", "balanced", "mystic", "direct"} else "balanced"
+
+async def set_tone_style(user_id: int, style: str):
+    if style not in {"soft", "balanced", "mystic", "direct"}:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET tone_style=? WHERE user_id=?", (style, user_id))
+        await db.commit()
+
+async def get_astro_tarot_enabled(user_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COALESCE(astro_tarot,1) FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+            return bool(row[0]) if row else True
+
+async def toggle_astro_tarot(user_id: int) -> bool:
+    enabled = await get_astro_tarot_enabled(user_id)
+    new_value = 0 if enabled else 1
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET astro_tarot=? WHERE user_id=?", (new_value, user_id))
+        await db.commit()
+    return bool(new_value)
+
+async def get_subscription_tier(user_id: int) -> str:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COALESCE(subscription_tier,'standard') FROM users WHERE user_id=?", (user_id,)) as c:
+            row = await c.fetchone()
+            tier = row[0] if row else "standard"
+    return tier if tier in {"standard", "vip"} else "standard"
+
+async def set_subscription_tier(user_id: int, tier: str):
+    if tier not in {"standard", "vip"}:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET subscription_tier=? WHERE user_id=?", (tier, user_id))
+        await db.commit()
+
+async def has_vip_subscription(user_id: int) -> bool:
+    return await has_subscription(user_id) and await get_subscription_tier(user_id) == "vip"
+
 def response_mode_instruction(mode: str, lang: str = "ru") -> str:
     if mode == "short":
         return (
@@ -1590,6 +1650,40 @@ def response_mode_instruction(mode: str, lang: str = "ru") -> str:
         "Стиль ответа: подробно. Дай развернутый, глубокий ответ с пояснениями и нюансами."
         if lang == "ru" else
         "Response style: detailed. Give a thorough and nuanced answer."
+    )
+
+def tone_style_instruction(style: str, lang: str = "ru") -> str:
+    mapping_ru = {
+        "soft": "Тон ответа: мягкий, поддерживающий и бережный.",
+        "balanced": "Тон ответа: спокойный, ясный и уравновешенный.",
+        "mystic": "Тон ответа: мистический и атмосферный, но при этом понятный и конкретный.",
+        "direct": "Тон ответа: прямой, честный и конкретный, без лишнего смягчения.",
+    }
+    mapping_en = {
+        "soft": "Tone: soft, supportive, and gentle.",
+        "balanced": "Tone: calm, clear, and balanced.",
+        "mystic": "Tone: mystical and atmospheric, but still clear and concrete.",
+        "direct": "Tone: direct, honest, and concrete.",
+    }
+    return mapping_ru.get(style, mapping_ru["balanced"]) if lang == "ru" else mapping_en.get(style, mapping_en["balanced"])
+
+def astro_tarot_instruction(profile: dict, enabled: bool, lang: str = "ru") -> str:
+    zodiac = (profile or {}).get("zodiac")
+    if not enabled or not zodiac:
+        return ""
+    return (
+        f"Астро+Таро режим включён. Учитывай знак зодиака пользователя ({zodiac}) как дополнительный слой интерпретации, не заменяя им смысл карт."
+        if lang == "ru" else
+        f"Astro+Tarot mode is enabled. Use the user's zodiac sign ({zodiac}) as an extra interpretive layer without replacing the meaning of the cards."
+    )
+
+def vip_instruction(is_vip: bool, lang: str = "ru") -> str:
+    if not is_vip:
+        return ""
+    return (
+        "Пользователь с VIP-подпиской. Дай особенно глубокий, точный и персонализированный ответ."
+        if lang == "ru" else
+        "The user has a VIP subscription. Give an especially deep, accurate, and personalized answer."
     )
 
 def profile_prompt_context(profile: dict, lang: str = "ru") -> str:
@@ -1718,6 +1812,38 @@ async def save_reading_history(user_id: int, action: str, header: str, result: s
         await db.execute("""DELETE FROM readings_history WHERE user_id=? AND id NOT IN (
             SELECT id FROM readings_history WHERE user_id=? ORDER BY created_at DESC LIMIT 20)""",
                          (user_id, user_id))
+        await db.commit()
+
+async def set_reading_outcome(user_id: int, history_id: int, status: str):
+    if status not in {"fulfilled", "partial", "not_fulfilled"}:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE readings_history SET outcome_status=? WHERE id=? AND user_id=?",
+            (status, history_id, user_id)
+        )
+        await db.commit()
+
+async def get_auto_series_candidates(stage_days: int) -> list[tuple[int, str]]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT u.user_id, COALESCE(u.language,'ru')
+               FROM users u
+               LEFT JOIN auto_series_progress a ON a.user_id=u.user_id AND a.stage=?
+               WHERE a.user_id IS NULL
+               AND COALESCE(u.is_banned,0)=0
+               AND COALESCE(u.notifications,1)=1
+               AND datetime(u.first_seen) <= datetime('now', ?)""",
+            (f"d{stage_days}", f"-{stage_days} days")
+        ) as c:
+            return await c.fetchall()
+
+async def mark_auto_series_sent(user_id: int, stage_days: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO auto_series_progress (user_id,stage) VALUES (?,?)",
+            (user_id, f"d{stage_days}")
+        )
         await db.commit()
 
 async def get_reading_history(user_id: int):
@@ -2267,29 +2393,39 @@ def profile_kb(lang: str = 'ru'):
 
 async def settings_title_text(user_id: int, lang: str) -> str:
     mode = await get_response_mode(user_id)
-    mode_label = "Коротко" if mode == "short" else "Подробно"
-    if lang != 'ru':
-        mode_label = "Short" if mode == "short" else "Detailed"
-    return (
-        f"⚙️ *Настройки*\n\nТекущий режим ответа: *{mode_label}*\n\nЗдесь можно менять длину ответов, язык, рассылку и управление профилем."
-        if lang == 'ru' else
-        f"⚙️ *Settings*\n\nCurrent answer mode: *{mode_label}*"
-    )
+    tone = await get_tone_style(user_id)
+    astro = await get_astro_tarot_enabled(user_id)
+    mode_label = "Short" if mode == "short" else "Detailed"
+    tone_label = {"soft": "Soft", "balanced": "Balanced", "mystic": "Mystic", "direct": "Direct"}.get(tone, "Balanced")
+    astro_label = "on" if astro else "off"
+    if lang == 'ru':
+        mode_label = "???????" if mode == "short" else "????????"
+        tone_label = {"soft": "?????", "balanced": "??????", "mystic": "??????????", "direct": "?????"}.get(tone, "??????")
+        astro_label = "???" if astro else "????"
+        return f"?? *?????????*\n\n?????: *{mode_label}*\n?????: *{tone_label}*\nAstro+Tarot: *{astro_label}*"
+    return f"?? *Settings*\n\nLength: *{mode_label}*\nStyle: *{tone_label}*\nAstro+Tarot: *{astro_label}*"
 
 async def settings_kb(user_id: int, lang: str = 'ru'):
     mode = await get_response_mode(user_id)
+    tone = await get_tone_style(user_id)
+    astro = await get_astro_tarot_enabled(user_id)
     hour = await get_notify_hour(user_id)
     kb = InlineKeyboardBuilder()
-    kb.button(text=("✅ Коротко" if mode == "short" else "Коротко") if lang == 'ru' else ("✅ Short" if mode == "short" else "Short"), callback_data="resp_mode_short")
-    kb.button(text=("✅ Подробно" if mode == "detailed" else "Подробно") if lang == 'ru' else ("✅ Detailed" if mode == "detailed" else "Detailed"), callback_data="resp_mode_detailed")
+    kb.button(text=("? ???????" if mode == "short" else "???????") if lang == 'ru' else ("? Short" if mode == "short" else "Short"), callback_data="resp_mode_short")
+    kb.button(text=("? ????????" if mode == "detailed" else "????????") if lang == 'ru' else ("? Detailed" if mode == "detailed" else "Detailed"), callback_data="resp_mode_detailed")
+    kb.button(text=("? ?????" if tone == "soft" else "?????") if lang == 'ru' else ("? Soft" if tone == "soft" else "Soft"), callback_data="tone_soft")
+    kb.button(text=("? ??????" if tone == "balanced" else "??????") if lang == 'ru' else ("? Balanced" if tone == "balanced" else "Balanced"), callback_data="tone_balanced")
+    kb.button(text=("? ??????????" if tone == "mystic" else "??????????") if lang == 'ru' else ("? Mystic" if tone == "mystic" else "Mystic"), callback_data="tone_mystic")
+    kb.button(text=("? ?????" if tone == "direct" else "?????") if lang == 'ru' else ("? Direct" if tone == "direct" else "Direct"), callback_data="tone_direct")
+    kb.button(text=f"Astro+Tarot: {'ON' if astro else 'OFF'}", callback_data="toggle_astro_tarot")
     kb.button(text=t(lang,'btn_notifications'), callback_data="notifications")
     kb.button(text=t(lang,'btn_notify_time') + f" ({hour}:00)", callback_data="notify_time_menu")
     kb.button(text=t(lang,'btn_language'), callback_data="change_language")
     kb.button(text=t(lang,'btn_profile'), callback_data="profile")
     kb.button(text=t(lang,'btn_clear_profile'), callback_data="profile_clear")
     kb.button(text=t(lang,'btn_delete_account'), callback_data="delete_account")
-    kb.button(text=t(lang,'btn_back'), callback_data="settings_menu")
-    kb.adjust(2, 2, 2, 2, 1)
+    kb.button(text=t(lang,'btn_back'), callback_data="account_menu")
+    kb.adjust(2, 2, 2, 1, 2, 2, 1)
     return kb.as_markup()
 
 def career_menu_kb(lang: str = 'ru'):
@@ -2335,6 +2471,7 @@ def subscription_keyboard(has_sub: bool, lang: str = 'ru', back_to: str = "accou
     kb = InlineKeyboardBuilder()
     if not has_sub:
         kb.button(text=t(lang,'btn_buy_stars',stars=SUBSCRIPTION_STARS), callback_data="buy_stars")
+        kb.button(text=(f"👑 VIP — {VIP_SUBSCRIPTION_STARS} Stars" if lang == 'ru' else f"👑 VIP — {VIP_SUBSCRIPTION_STARS} Stars"), callback_data="buy_vip_stars")
         kb.button(text=t(lang,'btn_buy_rub'), callback_data="buy_rub")
         if CRYPTOBOT_TOKEN:
             kb.button(text=t(lang,'btn_buy_crypto'), callback_data="buy_crypto")
@@ -2354,7 +2491,9 @@ async def safe_edit(callback: CallbackQuery, text: str, markup=None, parse_mode:
                                    parse_mode=parse_mode, reply_markup=markup)
         else:
             await callback.message.edit_text(text, parse_mode=parse_mode, reply_markup=markup)
-    except Exception:
+    except Exception as e:
+        if "message is not modified" in str(e).lower():
+            return
         await bot.send_message(callback.message.chat.id, text,
                                parse_mode=parse_mode, reply_markup=markup)
 
@@ -2472,10 +2611,15 @@ async def _do_request(uid: int, username: str, action: str, chat_id: int, prompt
         await log_request(uid, username, action)
         await log_funnel_event(uid, "reading_started", action)
         streak, milestone = await update_streak(uid)
-        profile_context = profile_prompt_context(await get_profile(uid), lang)
+        profile = await get_profile(uid)
+        profile_context = profile_prompt_context(profile, lang)
         mode_context = response_mode_instruction(await get_response_mode(uid), lang)
+        tone_context = tone_style_instruction(await get_tone_style(uid), lang)
+        astro_context = astro_tarot_instruction(profile, await get_astro_tarot_enabled(uid), lang)
+        vip_context = vip_instruction(await has_vip_subscription(uid), lang)
         original_prompt = prompt
-        prompt = f"{mode_context}\n\n{prompt}"
+        extra_context = "\n".join(part for part in [mode_context, tone_context, astro_context, vip_context] if part)
+        prompt = f"{extra_context}\n\n{prompt}"
         if profile_context:
             prompt = f"{profile_context}\n\nЗапрос:\n{prompt}"
         
@@ -3582,6 +3726,23 @@ async def response_mode_cb(callback: CallbackQuery):
     await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
     await callback.answer("Режим ответа обновлен" if lang == "ru" else "Answer mode updated")
 
+@dp.callback_query(F.data.in_({"tone_soft", "tone_balanced", "tone_mystic", "tone_direct"}))
+async def tone_style_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    style = callback.data.replace("tone_", "", 1)
+    await set_tone_style(uid, style)
+    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
+    await callback.answer("Стиль ответа обновлен" if lang == "ru" else "Answer style updated")
+
+@dp.callback_query(F.data == "toggle_astro_tarot")
+async def toggle_astro_tarot_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    enabled = await toggle_astro_tarot(uid)
+    await safe_edit(callback, await settings_title_text(uid, lang), await settings_kb(uid, lang))
+    await callback.answer(("Astro+Tarot включен" if enabled else "Astro+Tarot выключен") if lang == "ru" else ("Astro+Tarot enabled" if enabled else "Astro+Tarot disabled"))
+
 @dp.callback_query(F.data == "tarot_menu")
 async def tarot_menu_cb(callback: CallbackQuery):
     lang = await get_user_lang(callback.from_user.id)
@@ -4058,14 +4219,18 @@ async def subscription_cb(callback: CallbackQuery):
     lang = await get_user_lang(uid)
     has_sub = await has_subscription(uid)
     expiry = await get_subscription_expiry(uid)
+    tier = await get_subscription_tier(uid) if has_sub else "standard"
     count = await get_request_count(uid)
     streak = await get_streak(uid)
     if has_sub and expiry:
         text = t(lang,'sub_active', date=expiry.strftime('%d.%m.%Y'), count=count, streak=streak)
+        if tier == "vip":
+            text += "\n\n👑 *VIP tier active*" if lang != "ru" else "\n\n👑 *VIP-уровень активен*"
     else:
         bonus = await get_bonus_requests(uid)
         remaining = max(0, FREE_REQUESTS + bonus - count)
         text = t(lang,'sub_inactive', remaining=remaining, free=FREE_REQUESTS+bonus, stars=SUBSCRIPTION_STARS, streak=streak)
+        text += f"\n\n👑 VIP: *{VIP_SUBSCRIPTION_STARS} Stars*" if lang == "ru" else f"\n\n👑 VIP: *{VIP_SUBSCRIPTION_STARS} Stars*"
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=subscription_keyboard(has_sub, lang, "account_menu"))
     await callback.answer()
 
@@ -4078,13 +4243,29 @@ async def buy_stars_cb(callback: CallbackQuery):
                            currency="XTR", prices=[LabeledPrice(label=t(lang,'invoice_title'), amount=SUBSCRIPTION_STARS)])
     await callback.answer()
 
+@dp.callback_query(F.data == "buy_vip_stars")
+async def buy_vip_stars_cb(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = await get_user_lang(uid)
+    await log_funnel_event(uid, "buy_clicked", "vip_subscription")
+    await bot.send_invoice(
+        chat_id=uid,
+        title="👑 Mystra VIP",
+        description="VIP subscription for 30 days" if lang != "ru" else "VIP-подписка на 30 дней",
+        payload="sub_30d_vip_stars",
+        currency="XTR",
+        prices=[LabeledPrice(label="VIP", amount=VIP_SUBSCRIPTION_STARS)]
+    )
+    await callback.answer()
+
 @dp.callback_query(F.data == "buy_rub")
 async def buy_rub_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     lang = await get_user_lang(uid)
     await log_funnel_event(uid, "buy_clicked", "yookassa_subscription")
     if not YUKASSA_SHOP_ID:
-        await callback.answer(t(lang,'payment_unavail'), show_alert=True); return
+        msg = "YooKassa is not configured. Set YK_SBP in Railway Variables." if lang != "ru" else "YooKassa не настроена. Добавьте YK_SBP в Railway Variables."
+        await callback.answer(msg, show_alert=True); return
     await callback.answer()
     payment = await create_yukassa_payment(uid)
     if not payment or "id" not in payment:
