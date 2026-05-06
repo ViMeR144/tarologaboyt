@@ -1453,6 +1453,8 @@ async def init_db():
             user_id INTEGER, stage TEXT,
             sent_at TEXT DEFAULT (datetime('now')),
             PRIMARY KEY (user_id, stage))""")
+        await db.execute("""CREATE TABLE IF NOT EXISTS bot_settings (
+            key TEXT PRIMARY KEY, value TEXT)""")
         for col in ["notifications INTEGER DEFAULT 1","language TEXT DEFAULT NULL",
                     "bonus_requests INTEGER DEFAULT 0","referred_by INTEGER DEFAULT NULL",
                     "birth_date TEXT DEFAULT NULL","full_name TEXT DEFAULT NULL",
@@ -1500,6 +1502,18 @@ async def has_accepted_terms(user_id: int) -> bool:
 async def accept_terms(user_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE users SET terms_accepted=1 WHERE user_id=?", (user_id,))
+        await db.commit()
+
+async def get_setting(key: str, default: str = "1") -> str:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT value FROM bot_settings WHERE key=?", (key,)) as c:
+            row = await c.fetchone()
+    return row[0] if row else default
+
+async def set_setting(key: str, value: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT INTO bot_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=?",
+                         (key, value, value))
         await db.commit()
 
 async def set_user_lang(user_id: int, lang: str, username: str = None):
@@ -3131,6 +3145,20 @@ async def cmd_start(message: Message):
                 pass
         else:
             await db.commit()
+    if is_new and ADMIN_ID and await get_setting("notify_new_users", "1") == "1":
+        name = message.from_user.first_name or username
+        ref_line = f"\n👥 Реферал от: `{referrer_id}`" if referrer_id else ""
+        try:
+            await bot.send_message(
+                ADMIN_ID,
+                f"👤 *Новый пользователь!*\n\n"
+                f"🆔 `{uid}`\n"
+                f"📛 {name}\n"
+                f"🔗 @{username}" + (f"\n👥 Реферал от: `{referrer_id}`" if referrer_id else ""),
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
     if terms_from_site:
         await accept_terms(uid)
     if not await has_accepted_terms(uid):
@@ -3232,11 +3260,13 @@ async def cmd_admin(message: Message):
 
 async def show_admin_menu(message_or_callback):
     total, reqs, subs, notif, banned, ru, en, _, new_today, new_week, new_month = await get_admin_stats()
+    notify_new = await get_setting("notify_new_users", "1") == "1"
     text = (f"👑 *Панель администратора*\n\n"
             f"👥 Всего: *{total}* (🇷🇺 {ru} / 🇬🇧 {en})\n"
             f"📅 Новых: сегодня *{new_today}* | неделя *{new_week}* | месяц *{new_month}*\n"
             f"💎 Подписок: *{subs}* | 🔔 Рассылка: *{notif}*\n"
-            f"⛔ Заблокировано: *{banned}* | 📊 Запросов: *{reqs}*")
+            f"⛔ Заблокировано: *{banned}* | 📊 Запросов: *{reqs}*\n\n"
+            f"🔔 Уведомления о новых: {'✅ ВКЛ' if notify_new else '❌ ВЫКЛ'}")
     kb = InlineKeyboardBuilder()
     kb.button(text="👥 Пользователи", callback_data="adm_users_0")
     kb.button(text="💎 Подписчики", callback_data="adm_subs_0")
@@ -3251,7 +3281,9 @@ async def show_admin_menu(message_or_callback):
     kb.button(text="👥 Рефералы", callback_data="adm_referrals")
     kb.button(text="🧪 A/B тест", callback_data="adm_ab")
     kb.button(text="📥 Экспорт CSV", callback_data="adm_export")
-    kb.adjust(2, 2, 2, 2, 2, 2, 1)
+    kb.button(text=f"{'🔕 Выкл. уведомления о новых' if notify_new else '🔔 Вкл. уведомления о новых'}",
+              callback_data="adm_toggle_notify_new")
+    kb.adjust(2, 2, 2, 2, 2, 2, 1, 1)
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     else:
@@ -3417,6 +3449,15 @@ async def adm_main_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
     await show_admin_menu(callback)
     await callback.answer("")
+
+@dp.callback_query(F.data == "adm_toggle_notify_new")
+async def adm_toggle_notify_new_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    current = await get_setting("notify_new_users", "1")
+    new_val = "0" if current == "1" else "1"
+    await set_setting("notify_new_users", new_val)
+    await callback.answer("✅ ВКЛ" if new_val == "1" else "❌ ВЫКЛ", show_alert=False)
+    await show_admin_menu(callback)
 
 @dp.callback_query(F.data == "adm_noop")
 async def adm_noop_cb(callback: CallbackQuery):
