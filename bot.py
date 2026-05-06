@@ -3362,7 +3362,7 @@ async def _refresh_user_card(callback: CallbackQuery, target_uid: int, back_to: 
         kb.button(text="⛔ Забанить", callback_data=f"adm_ban_{target_uid}")
     if sub:
         kb.button(text="❌ Отозвать подписку", callback_data=f"adm_revoke_{target_uid}")
-    kb.button(text="💎 +30 дней", callback_data=f"adm_add30_{target_uid}")
+    kb.button(text="💎 Выдать подписку", callback_data=f"adm_addsub_{target_uid}")
     kb.button(text="🔄 Сбросить лимит", callback_data=f"adm_rlimit_{target_uid}")
     kb.button(text="✉️ Написать юзеру", callback_data=f"adm_msg_{target_uid}")
     back_cd = "adm_subs_0" if back_to == "subs" else "adm_users_0"
@@ -3426,13 +3426,20 @@ async def adm_revoke_cb(callback: CallbackQuery):
     await callback.answer("❌ Подписка отозвана", show_alert=True)
     await _refresh_user_card(callback, uid)
 
-@dp.callback_query(F.data.startswith("adm_add30_"))
-async def adm_add30_cb(callback: CallbackQuery):
+@dp.callback_query(F.data.startswith("adm_addsub_"))
+async def adm_addsub_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
     uid = int(callback.data.split("_")[2])
-    expiry = await grant_subscription(uid, 30)
-    await callback.answer(f"💎 +30 дней до {expiry.strftime('%d.%m.%Y')}", show_alert=True)
-    await _refresh_user_card(callback, uid)
+    user_states[callback.from_user.id] = {
+        "action": "adm_grant_sub",
+        "target_uid": uid,
+        "prompt_msg_id": callback.message.message_id,
+        "chat_id": callback.message.chat.id,
+    }
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Отмена", callback_data=f"adm_u_{uid}")
+    await safe_edit(callback, f"💎 *Выдать подписку пользователю* `{uid}`\n\nВведите количество дней:", markup=kb.as_markup())
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("adm_rlimit_"))
 async def adm_rlimit_cb(callback: CallbackQuery):
@@ -3757,8 +3764,19 @@ async def cmd_grant(message: Message):
         await message.answer("Использование: `/grant <user_id> [дней]`\nПо умолчанию: 30 дней", parse_mode="Markdown")
         return
     days = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 30
-    expiry = await grant_subscription(int(parts[1]), days)
-    await message.answer(f"✅ Подписка выдана `{parts[1]}` на {days} дней (до {expiry.strftime('%d.%m.%Y')})", parse_mode="Markdown")
+    target_uid = int(parts[1])
+    expiry = await grant_subscription(target_uid, days)
+    await message.answer(f"✅ Подписка выдана `{target_uid}` на {days} дней (до {expiry.strftime('%d.%m.%Y')})", parse_mode="Markdown")
+    user_lang = await get_user_lang(target_uid)
+    try:
+        await bot.send_message(
+            target_uid,
+            f"🎁 *Вам выдана подписка!*\n\n💎 Активна до: *{expiry.strftime('%d.%m.%Y')}*\n\nНаслаждайтесь безлимитными раскладами! 🔮"
+            if user_lang == 'ru' else
+            f"🎁 *You've been granted a subscription!*\n\n💎 Active until: *{expiry.strftime('%d.%m.%Y')}*\n\nEnjoy unlimited readings! 🔮",
+            parse_mode="Markdown", reply_markup=main_menu(user_lang))
+    except Exception:
+        pass
 
 @dp.message(Command("revoke"))
 async def cmd_revoke(message: Message):
@@ -5416,6 +5434,39 @@ async def handle_message(message: Message):
             kb = InlineKeyboardBuilder()
             kb.button(text="🏠 Меню", callback_data="adm_main")
             await bot.send_message(chat_id, f"❌ Пользователь `{query}` не найден.", parse_mode="Markdown", reply_markup=kb.as_markup())
+        return
+
+    # ── Admin: grant subscription ─────────────────────────────────────────────
+    if action == "adm_grant_sub":
+        target_uid = state.get("target_uid")
+        if not text.strip().isdigit() or int(text.strip()) <= 0:
+            kb = InlineKeyboardBuilder()
+            kb.button(text="❌ Отмена", callback_data=f"adm_u_{target_uid}")
+            await bot.send_message(chat_id, "❌ Введите целое число дней (например: `14`).", parse_mode="Markdown", reply_markup=kb.as_markup())
+            return
+        days = int(text.strip())
+        expiry = await grant_subscription(target_uid, days)
+        kb = InlineKeyboardBuilder()
+        kb.button(text="👤 Назад к юзеру", callback_data=f"adm_u_{target_uid}")
+        kb.button(text="🏠 Меню", callback_data="adm_main")
+        kb.adjust(2)
+        await bot.send_message(chat_id,
+            f"✅ Подписка выдана `{target_uid}` на *{days} дней* (до {expiry.strftime('%d.%m.%Y')})",
+            parse_mode="Markdown", reply_markup=kb.as_markup())
+        user_lang = await get_user_lang(target_uid)
+        try:
+            await bot.send_message(
+                target_uid,
+                f"🎁 *Вам выдана подписка!*\n\n"
+                f"💎 Активна до: *{expiry.strftime('%d.%m.%Y')}*\n\n"
+                f"Наслаждайтесь безлимитными раскладами! 🔮"
+                if user_lang == 'ru' else
+                f"🎁 *You've been granted a subscription!*\n\n"
+                f"💎 Active until: *{expiry.strftime('%d.%m.%Y')}*\n\n"
+                f"Enjoy unlimited readings! 🔮",
+                parse_mode="Markdown", reply_markup=main_menu(user_lang))
+        except Exception:
+            pass
         return
 
     # ── Admin: send message to user ───────────────────────────────────────────
