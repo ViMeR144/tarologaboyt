@@ -45,6 +45,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "")
 CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "").strip().lstrip("@")
 YOOKASSA_WEBHOOK_PATH = os.getenv("YOOKASSA_WEBHOOK_PATH", "/yookassa/webhook")
 PORT = int(os.getenv("PORT", "8080"))
+BOT_WEB_URL = os.getenv("BOT_WEB_URL", "").strip().rstrip("/")
 
 SUBSCRIPTION_STARS = 100
 PREMIUM_PRODUCT_PRICES = {
@@ -3134,7 +3135,11 @@ async def cmd_start(message: Message):
         await accept_terms(uid)
     if not await has_accepted_terms(uid):
         kb = InlineKeyboardBuilder()
-        if SITE_URL:
+        lang_now = await get_user_lang(uid)
+        if BOT_WEB_URL:
+            kb.button(text=("📜 Читать и принять" if lang_now == 'ru' else "📜 Read & Accept"),
+                      url=f"{BOT_WEB_URL}/terms?uid={uid}&lang={lang_now}")
+        elif SITE_URL:
             kb.button(text="📜 Читать и принять на сайте",
                       url=f"{SITE_URL}/terms?tg={uid}")
         kb.button(text="✅ Принимаю (без перехода)", callback_data="terms_accept")
@@ -5714,10 +5719,150 @@ async def _handle_yookassa_webhook(request: aiohttp.web.Request) -> aiohttp.web.
     return aiohttp.web.Response(status=200, text="OK")
 
 
+_TERMS_HTML = """<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #0f0f1a; color: #e0d7f5; min-height: 100vh;
+         display: flex; align-items: center; justify-content: center; padding: 20px; }}
+  .card {{ background: #1a1a2e; border: 1px solid #2d2d4e; border-radius: 16px;
+           max-width: 480px; width: 100%; padding: 32px 28px; }}
+  .logo {{ font-size: 2.5rem; text-align: center; margin-bottom: 8px; }}
+  h1 {{ text-align: center; font-size: 1.3rem; color: #c9b8f0; margin-bottom: 24px; }}
+  .points {{ list-style: none; margin-bottom: 28px; }}
+  .points li {{ padding: 10px 0; border-bottom: 1px solid #2d2d4e; font-size: 0.95rem;
+                display: flex; gap: 10px; }}
+  .points li:last-child {{ border-bottom: none; }}
+  .points li span {{ flex-shrink: 0; }}
+  .btn {{ display: block; width: 100%; padding: 15px;
+          background: linear-gradient(135deg, #7c3aed, #a855f7);
+          color: #fff; border: none; border-radius: 12px; font-size: 1rem;
+          font-weight: 600; cursor: pointer; transition: opacity .2s; }}
+  .btn:hover {{ opacity: 0.88; }}
+  .btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+  .success {{ text-align: center; display: none; }}
+  .success .icon {{ font-size: 3rem; margin-bottom: 12px; }}
+  .success p {{ color: #a0c4a0; margin-bottom: 20px; font-size: 0.95rem; }}
+  .tg-btn {{ display: inline-block; padding: 12px 28px;
+             background: #229ed9; color: #fff; border-radius: 10px;
+             text-decoration: none; font-weight: 600; font-size: 0.95rem; }}
+</style>
+</head>
+<body>
+<div class="card" id="main">
+  <div class="logo">🔮</div>
+  <h1>{title}</h1>
+  <ul class="points">
+    <li><span>🎭</span><span>{p1}</span></li>
+    <li><span>🔞</span><span>{p2}</span></li>
+    <li><span>🔒</span><span>{p3}</span></li>
+    <li><span>📵</span><span>{p4}</span></li>
+  </ul>
+  <button class="btn" id="acceptBtn" onclick="doAccept()">{btn}</button>
+</div>
+<div class="card success" id="done">
+  <div class="icon">✅</div>
+  <p>{ok_text}</p>
+  <a class="tg-btn" href="{tg_link}">{tg_btn}</a>
+</div>
+<script>
+async function doAccept() {{
+  const btn = document.getElementById('acceptBtn');
+  btn.disabled = true;
+  try {{
+    const r = await fetch('/terms/accept', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
+      body: 'uid={uid}'
+    }});
+    if (r.ok) {{
+      document.getElementById('main').style.display = 'none';
+      document.getElementById('done').style.display = 'block';
+    }} else {{ btn.disabled = false; }}
+  }} catch(e) {{ btn.disabled = false; }}
+}}
+</script>
+</body>
+</html>"""
+
+_TERMS_TEXTS = {
+    'ru': {
+        'title': "Пользовательское соглашение",
+        'p1': "Расклады носят развлекательный характер",
+        'p2': "Мне исполнилось 18 лет",
+        'p3': "Я согласен с политикой хранения данных",
+        'p4': "Я не буду использовать бота в противоправных целях",
+        'btn': "✅ Принимаю соглашение",
+        'ok_text': "Соглашение принято! Можете вернуться в бот.",
+        'tg_btn': "Открыть бота",
+    },
+    'en': {
+        'title': "Terms of Service",
+        'p1': "Readings are for entertainment purposes only",
+        'p2': "I am 18 years of age or older",
+        'p3': "I agree to the data storage policy",
+        'p4': "I will not use the bot for unlawful purposes",
+        'btn': "✅ I Accept",
+        'ok_text': "Terms accepted! You can return to the bot.",
+        'tg_btn': "Open bot",
+    },
+}
+
+def _get_terms_text(lang: str) -> dict:
+    return _TERMS_TEXTS.get(lang, _TERMS_TEXTS['en'])
+
+async def _handle_terms_page(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    uid_str = request.rel_url.query.get("uid", "")
+    lang = request.rel_url.query.get("lang", "ru")
+    if not uid_str.isdigit():
+        return aiohttp.web.Response(status=400, text="Bad request")
+    uid = int(uid_str)
+    tx = _get_terms_text(lang)
+    tg_link = f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "https://t.me/"
+    html = _TERMS_HTML.format(
+        lang=lang, uid=uid,
+        title=tx['title'], p1=tx['p1'], p2=tx['p2'], p3=tx['p3'], p4=tx['p4'],
+        btn=tx['btn'], ok_text=tx['ok_text'], tg_btn=tx['tg_btn'],
+        tg_link=tg_link,
+    )
+    return aiohttp.web.Response(text=html, content_type="text/html", charset="utf-8")
+
+async def _handle_terms_accept(request: aiohttp.web.Request) -> aiohttp.web.Response:
+    try:
+        data = await request.post()
+        uid_str = data.get("uid", "")
+        if not uid_str or not str(uid_str).isdigit():
+            return aiohttp.web.Response(status=400, text="Bad request")
+        uid = int(uid_str)
+        await accept_terms(uid)
+        lang = await get_user_lang(uid)
+        tx = _get_terms_text(lang)
+        try:
+            accepted_text = (
+                "✅ *Соглашение принято!*\n\nДобро пожаловать в Мистру. Выберите действие в меню."
+                if lang == 'ru' else
+                "✅ *Terms accepted!*\n\nWelcome to Mystra. Choose an action from the menu."
+            )
+            await bot.send_message(uid, accepted_text, parse_mode="Markdown",
+                                   reply_markup=main_menu(lang))
+        except Exception as e:
+            logger.error(f"Terms accept: send_message to {uid} failed: {e}")
+        return aiohttp.web.Response(text="OK")
+    except Exception as e:
+        logger.error(f"Terms accept handler error: {e}")
+        return aiohttp.web.Response(status=500, text="Error")
+
 def create_web_app() -> aiohttp.web.Application:
     app = aiohttp.web.Application()
     app.router.add_get("/", lambda r: aiohttp.web.Response(text="Mystra bot is running"))
     app.router.add_get("/health", lambda r: aiohttp.web.Response(text="OK"))
+    app.router.add_get("/terms", _handle_terms_page)
+    app.router.add_post("/terms/accept", _handle_terms_accept)
     app.router.add_post(YOOKASSA_WEBHOOK_PATH, _handle_yookassa_webhook)
     return app
 
