@@ -3283,7 +3283,8 @@ async def show_admin_menu(message_or_callback):
     kb.button(text="📥 Экспорт CSV", callback_data="adm_export")
     kb.button(text=f"{'🔕 Выкл. уведомления о новых' if notify_new else '🔔 Вкл. уведомления о новых'}",
               callback_data="adm_toggle_notify_new")
-    kb.adjust(2, 2, 2, 2, 2, 2, 1, 1)
+    kb.button(text="⚠️ Сбросить всех юзеров", callback_data="adm_resetusers_confirm")
+    kb.adjust(2, 2, 2, 2, 2, 2, 1, 1, 1)
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text, parse_mode="Markdown", reply_markup=kb.as_markup())
     else:
@@ -3466,6 +3467,38 @@ async def adm_toggle_notify_new_cb(callback: CallbackQuery):
     await callback.answer("✅ ВКЛ" if new_val == "1" else "❌ ВЫКЛ", show_alert=False)
     await show_admin_menu(callback)
 
+@dp.callback_query(F.data == "adm_resetusers_confirm")
+async def adm_resetusers_confirm_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🗑 Да, удалить всё", callback_data="adm_resetusers_do")
+    kb.button(text="❌ Отмена", callback_data="adm_main")
+    kb.adjust(1)
+    await safe_edit(callback,
+        "⚠️ *Вы уверены?*\n\n"
+        "Это удалит *всех пользователей* и все связанные данные.\n"
+        "Действие *необратимо*.",
+        markup=kb.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_resetusers_do")
+async def adm_resetusers_do_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    tables = [
+        "users", "subscriptions", "payments", "yookassa_invoices",
+        "crypto_invoices", "readings_history", "reading_feedback",
+        "funnel_events", "requests", "auto_series_progress", "one_time_entitlements"
+    ]
+    async with aiosqlite.connect(DB_PATH) as db:
+        for tbl in tables:
+            try:
+                await db.execute(f"DELETE FROM {tbl}")
+            except Exception:
+                pass
+        await db.commit()
+    await callback.answer("✅ Все данные удалены", show_alert=True)
+    await show_admin_menu(callback)
+
 @dp.callback_query(F.data == "adm_noop")
 async def adm_noop_cb(callback: CallbackQuery):
     await callback.answer()
@@ -3525,13 +3558,19 @@ async def adm_activity_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "adm_broadcast_menu")
 async def adm_broadcast_menu_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
-    text = ("📢 *Рассылка*\n\n"
-            "Используйте команду:\n"
-            "`/broadcast <текст>`\n\n"
-            "Поддерживается Markdown-разметка.")
+    user_states[callback.from_user.id] = {
+        "action": "adm_broadcast",
+        "prompt_msg_id": callback.message.message_id,
+        "chat_id": callback.message.chat.id,
+    }
     kb = InlineKeyboardBuilder()
-    kb.button(text="🏠 Меню", callback_data="adm_main")
-    await safe_edit(callback, text, markup=kb.as_markup())
+    kb.button(text="❌ Отмена", callback_data="adm_main")
+    await safe_edit(callback,
+        "📢 *Рассылка*\n\n"
+        "Напишите текст сообщения.\n"
+        "Поддерживается *Markdown*-разметка.\n\n"
+        "_Сообщение уйдёт всем пользователям бота._",
+        markup=kb.as_markup())
     await callback.answer()
 
 @dp.callback_query(F.data == "adm_search")
@@ -5457,6 +5496,25 @@ async def handle_message(message: Message):
             kb = InlineKeyboardBuilder()
             kb.button(text="🏠 Меню", callback_data="adm_main")
             await bot.send_message(chat_id, f"❌ Пользователь `{query}` не найден.", parse_mode="Markdown", reply_markup=kb.as_markup())
+        return
+
+    # ── Admin: broadcast ──────────────────────────────────────────────────────
+    if action == "adm_broadcast":
+        user_ids = await get_all_users()
+        status_msg = await bot.send_message(chat_id, f"📤 Отправка {len(user_ids)} пользователям...")
+        sent, failed = 0, 0
+        for buid in user_ids:
+            try:
+                await bot.send_message(buid, text, parse_mode="Markdown")
+                sent += 1
+                await asyncio.sleep(0.05)
+            except Exception:
+                failed += 1
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🏠 Меню", callback_data="adm_main")
+        await status_msg.edit_text(
+            f"✅ Рассылка завершена!\n\n📤 Отправлено: *{sent}*\n❌ Ошибок: *{failed}*",
+            parse_mode="Markdown", reply_markup=kb.as_markup())
         return
 
     # ── Admin: create promo code ──────────────────────────────────────────────
