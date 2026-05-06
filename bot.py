@@ -3569,21 +3569,44 @@ async def adm_delpromo_cb(callback: CallbackQuery):
     await callback.answer(f"🗑 Промокод {code} удалён", show_alert=True)
     await _show_promos(callback)
 
+@dp.callback_query(F.data == "adm_promo_create")
+async def adm_promo_create_cb(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID: return
+    user_states[callback.from_user.id] = {
+        "action": "adm_promo_create",
+        "prompt_msg_id": callback.message.message_id,
+        "chat_id": callback.message.chat.id,
+    }
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Отмена", callback_data="adm_promos")
+    await safe_edit(callback,
+        "🎟 *Создание промокода*\n\n"
+        "Введите в одну строку:\n"
+        "`КОД ДНЕЙ [КОЛ-ВО_ИСПОЛЬЗОВАНИЙ]`\n\n"
+        "Примеры:\n"
+        "• `SUMMER30 30` — одноразовый, 30 дней\n"
+        "• `VIP7 7 10` — 10 использований, 7 дней\n"
+        "• `FREE14 14 999` — почти безлимитный",
+        markup=kb.as_markup())
+    await callback.answer()
+
 async def _show_promos(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT code, days, used_count, max_uses FROM promo_codes ORDER BY created_at DESC LIMIT 20") as c:
             promos = await c.fetchall()
     if not promos:
-        text = "🎟 *Промокоды*\n\nПромокодов нет.\n\nСоздать: `/promo create КОД 30`"
+        text = "🎟 *Промокоды*\n\nПромокодов нет."
     else:
         text = "🎟 *Промокоды*\n\n"
         for code, days, used, max_uses in promos:
-            text += f"• `{code}` — {days} дн. ({used}/{max_uses} исп.)\n"
+            inf = "∞" if max_uses >= 9999 else str(max_uses)
+            text += f"• `{code}` — {days} дн. ({used}/{inf} исп.)\n"
     kb = InlineKeyboardBuilder()
+    kb.button(text="➕ Создать промокод", callback_data="adm_promo_create")
     for code, days, used, max_uses in (promos or []):
-        kb.button(text=f"❌ {code}", callback_data=f"adm_delpromo_{code}")
+        kb.button(text=f"🗑 {code}", callback_data=f"adm_delpromo_{code}")
     kb.button(text="🏠 Меню", callback_data="adm_main")
-    kb.adjust(*([1] * len(promos)), 1) if promos else kb.adjust(1)
+    kb.adjust(1, *([1] * len(promos)), 1)
     await safe_edit(callback, text, markup=kb.as_markup())
 
 @dp.callback_query(F.data == "adm_finance")
@@ -5434,6 +5457,30 @@ async def handle_message(message: Message):
             kb = InlineKeyboardBuilder()
             kb.button(text="🏠 Меню", callback_data="adm_main")
             await bot.send_message(chat_id, f"❌ Пользователь `{query}` не найден.", parse_mode="Markdown", reply_markup=kb.as_markup())
+        return
+
+    # ── Admin: create promo code ──────────────────────────────────────────────
+    if action == "adm_promo_create":
+        parts = text.strip().split()
+        kb = InlineKeyboardBuilder()
+        kb.button(text="◀️ К промокодам", callback_data="adm_promos")
+        if len(parts) < 2 or not parts[1].isdigit():
+            await bot.send_message(chat_id,
+                "❌ Неверный формат. Пример: `SUMMER30 30` или `VIP7 7 5`",
+                parse_mode="Markdown", reply_markup=kb.as_markup())
+            return
+        code = parts[0].upper()
+        days = int(parts[1])
+        max_uses = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 1
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO promo_codes (code, days, max_uses) VALUES (?,?,?)",
+                (code, days, max_uses))
+            await db.commit()
+        inf = "∞" if max_uses >= 999 else str(max_uses)
+        await bot.send_message(chat_id,
+            f"✅ Промокод создан!\n\n`{code}` — {days} дн., {inf} исп.",
+            parse_mode="Markdown", reply_markup=kb.as_markup())
         return
 
     # ── Admin: grant subscription ─────────────────────────────────────────────
