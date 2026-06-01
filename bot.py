@@ -3671,11 +3671,17 @@ async def adm_finance_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "adm_top")
 async def adm_top_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
-    rows = await get_top_users(10)
-    text = "🏆 *Топ-10 активных пользователей*\n\n"
-    for i, (uid, uname, cnt) in enumerate(rows, 1):
-        label = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
-        text += f"{i}. {label} — *{cnt}* запросов\n"
+    try:
+        rows = await get_top_users(10)
+        text = "🏆 *Топ-10 активных пользователей*\n\n"
+        if rows:
+            for i, (uid, uname, cnt) in enumerate(rows, 1):
+                label = f"@{uname}" if uname and uname != "unknown" else f"id:{uid}"
+                text += f"{i}. {label} — *{cnt}* запросов\n"
+        else:
+            text += "_Данных пока нет._"
+    except Exception as e:
+        text = f"❌ Ошибка: `{e}`"
     kb = InlineKeyboardBuilder()
     kb.button(text="🔄 Обновить", callback_data="adm_top")
     kb.button(text="🏠 Меню", callback_data="adm_main")
@@ -3710,11 +3716,17 @@ async def adm_funnel_cb(callback: CallbackQuery):
 @dp.callback_query(F.data == "adm_popular")
 async def adm_popular_cb(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID: return
-    rows = await get_popular_actions(10)
-    text = "📈 *Популярность функций*\n\n"
-    for action, cnt in rows:
-        label = _ACTION_LABELS.get(action, action)
-        text += f"• {label} — *{cnt}*\n"
+    try:
+        rows = await get_popular_actions(10)
+        text = "📈 *Популярность функций*\n\n"
+        if rows:
+            for action, cnt in rows:
+                label = _ACTION_LABELS.get(action, action)
+                text += f"• {label} — *{cnt}*\n"
+        else:
+            text += "_Данных пока нет._"
+    except Exception as e:
+        text = f"❌ Ошибка: `{e}`"
     kb = InlineKeyboardBuilder()
     kb.button(text="🔄 Обновить", callback_data="adm_popular")
     kb.button(text="🏠 Меню", callback_data="adm_main")
